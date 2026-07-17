@@ -22,6 +22,7 @@ export default [
       },
       globals: {
         document: 'readonly',
+        window: 'readonly',
         process: 'readonly'
       }
     },

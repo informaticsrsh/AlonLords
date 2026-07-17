@@ -1,5 +1,30 @@
+import { applyActionEffect, applyBattleAuras, beginTurn, evaluateFormula, selectAutomaticAction, spendActionResources } from './actions.js';
+
 export { empireUnits, getEmpireUnit } from './catalog.js';
-export { evaluateFormula, resolveAction, selectTargets } from './actions.js';
+export { choosePath, createPaths, createRun, evolveUnit, finishBattle, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
+export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, resolveAction, selectAutomaticAction, selectTargets, spendActionResources } from './actions.js';
+
+export function createUnitInstance(definition, lord) {
+  if (!definition.combat) {
+    throw new Error(`Unit ${definition.id} does not have combat data yet.`);
+  }
+
+  const maxHp = evaluateFormula(definition.combat.hpFormula, lord);
+  return {
+    id: definition.id,
+    name: definition.name,
+    maxHp,
+    hp: maxHp,
+    actions: definition.combat.actions,
+    passives: definition.combat.passives ?? [],
+    raceType: 'human',
+    effects: [],
+    mana: 50,
+    manaMax: 50,
+    manaRegen: 10,
+    cooldowns: {}
+  };
+}
 
 /**
  * Створює відтворюваний генератор випадкових чисел.
@@ -45,8 +70,16 @@ export function placeUnit(grid, unit, position) {
   };
 }
 
+export function moveUnit(grid, unit, position) {
+  const withoutUnit = {
+    ...grid,
+    placements: grid.placements.filter((placement) => placement.unit.id !== unit.id)
+  };
+  return canPlaceUnit(withoutUnit, unit, position) ? placeUnit(withoutUnit, unit, position) : grid;
+}
+
 function cloneUnit(unit) {
-  return { ...unit, hp: unit.maxHp };
+  return { ...unit, hp: unit.hp ?? unit.maxHp, effects: [...(unit.effects ?? [])], cooldowns: { ...(unit.cooldowns ?? {}) } };
 }
 
 function firstLiving(units) {
@@ -59,9 +92,13 @@ function firstLiving(units) {
  */
 export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
   const rng = createRng(seed);
+  const initialAllies = allies.map(cloneUnit);
+  const initialEnemies = enemies.map(cloneUnit);
+  const alliedAuras = applyBattleAuras(initialAllies, initialEnemies);
+  const enemyAuras = applyBattleAuras(alliedAuras.enemies, alliedAuras.units);
   const state = {
-    allies: allies.map(cloneUnit),
-    enemies: enemies.map(cloneUnit),
+    allies: enemyAuras.enemies,
+    enemies: enemyAuras.units,
     events: [],
     round: 0,
     winner: null
@@ -74,29 +111,56 @@ export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
       [state.allies, state.enemies, 'ally'],
       [state.enemies, state.allies, 'enemy']
     ]) {
-      for (const attacker of attackers) {
+      for (let attackerIndex = 0; attackerIndex < attackers.length; attackerIndex += 1) {
+        let attacker = attackers[attackerIndex];
         if (attacker.hp <= 0 || state.winner) continue;
+        attacker = beginTurn(attacker);
+        attackers[attackerIndex] = attacker;
+        if (attacker.hp <= 0) continue;
+        if (attacker.effects.some((effect) => effect.kind === 'control')) {
+          state.events.push({ type: 'control_skip', round: state.round, unitId: attacker.id });
+          continue;
+        }
 
-        const target = firstLiving(defenders);
-        if (!target) {
+        if (!firstLiving(defenders)) {
           state.winner = side;
           break;
         }
 
-        const isCritical = rng() < (attacker.critChance ?? 0);
-        const damage = attacker.attack * (isCritical ? 2 : 1);
-        target.hp = Math.max(0, target.hp - damage);
-        state.events.push({
-          type: 'attack',
-          round: state.round,
-          attackerId: attacker.id,
-          targetId: target.id,
-          damage,
-          isCritical
-        });
-
-        if (target.hp === 0) {
-          state.events.push({ type: 'death', round: state.round, unitId: target.id });
+        const action = selectAutomaticAction(attacker, attackers, defenders);
+        if (action) {
+          const candidates = action.targetRule.side === 'ally' ? attackers : defenders;
+          const resolution = applyActionEffect(action, attacker.lord ?? {}, candidates, rng, attacker, action.targetRule.side === 'enemy' ? defenders : attackers);
+          attackers[attackerIndex] = spendActionResources(attacker, action);
+          for (const change of resolution.changes) {
+            state.events.push({
+              type: action.effectKind,
+              round: state.round,
+              attackerId: attacker.id,
+              targetId: change.targetId,
+              amount: change.damage || resolution.amount,
+              isCritical: change.critical,
+              actionId: action.id
+            });
+            if (change.reflectedDamage) {
+              state.events.push({ type: 'reflect', round: state.round, attackerId: change.targetId, targetId: attacker.id, amount: change.reflectedDamage });
+            }
+            if (change.counterDamage) {
+              state.events.push({ type: 'counter', round: state.round, attackerId: change.targetId, targetId: attacker.id, amount: change.counterDamage });
+            }
+            if (change.hpAfter === 0) {
+              state.events.push({ type: 'death', round: state.round, unitId: change.targetId });
+            }
+          }
+        } else {
+          const target = firstLiving(defenders);
+          const isCritical = rng() < (attacker.critChance ?? 0);
+          const damage = attacker.attack * (isCritical ? 2 : 1);
+          target.hp = Math.max(0, target.hp - damage);
+          state.events.push({
+            type: 'attack', round: state.round, attackerId: attacker.id, targetId: target.id, damage, isCritical, actionId: 'basic_attack'
+          });
+          if (target.hp === 0) state.events.push({ type: 'death', round: state.round, unitId: target.id });
         }
 
         if (!firstLiving(defenders)) {
@@ -110,5 +174,21 @@ export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
   return {
     ...state,
     winner: state.winner ?? 'draw'
+  };
+}
+
+/** Підсумовує серію відтворюваних боїв для швидкої перевірки балансу. */
+export function simulateBattleSeries({ allies, enemies, seed = 1, battles = 100, maxRounds = 50 }) {
+  const results = Array.from({ length: battles }, (_, index) => simulateBattle({ allies, enemies, seed: seed + index, maxRounds }));
+  const wins = results.filter((result) => result.winner === 'ally').length;
+  const losses = results.filter((result) => result.winner === 'enemy').length;
+  const draws = results.length - wins - losses;
+  return {
+    battles,
+    wins,
+    losses,
+    draws,
+    winRate: battles ? wins / battles : 0,
+    averageRounds: battles ? results.reduce((total, result) => total + result.round, 0) / battles : 0
   };
 }

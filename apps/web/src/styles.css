@@ -16,7 +16,53 @@ article h2, .result h2 { margin-top: 0; }
 button { font: inherit; cursor: pointer; }
 .roster button { color: #f9e9c0; background: #382c3a; border: 1px solid #75566a; border-radius: 8px; padding: 8px 12px; }
 .roster button.selected { border-color: #e6a84a; background: #5a3e20; }
+.roster button:disabled { cursor: not-allowed; opacity: .45; }
+.battle-button { color: #20150b; background: #e6a84a; border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 700; }
+.reset-button { margin-left: 10px; color: #d2c5b2; background: transparent; border: 1px solid #75566a; border-radius: 8px; padding: 10px 16px; }
+.army-actions { display: grid; gap: 8px; text-align: left; margin: 18px 0; }
+.member-actions { padding: 10px; border: 1px solid #594150; border-radius: 8px; }
+.member-actions button { margin: 6px 0 0 8px; color: #f9e9c0; background: #382c3a; border: 1px solid #75566a; border-radius: 6px; padding: 4px 8px; }
+.tactics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; color: #d2c5b2; font-size: .85rem; }
+.tactics label { display: flex; align-items: center; gap: 6px; }
+.tactics select { color: #f9e9c0; background: #302333; border: 1px solid #75566a; border-radius: 5px; padding: 4px; }
+.battle-report { margin-top: 20px; padding: 16px; text-align: left; border: 1px solid #594150; border-radius: 10px; background: #1c1620; }
+.battle-report h3 { margin: 0 0 8px; }
+.battle-state { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.battle-state h4 { margin: 0 0 8px; color: #e6a84a; }
+.battle-unit { margin: 7px 0; padding: 9px; border: 1px solid #594150; border-radius: 7px; background: #271d27; animation: battle-unit-enter .35s ease both; }
+.battle-unit.fallen { filter: grayscale(1); opacity: .6; }
+.stat-line { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: center; margin-top: 6px; font-size: .75rem; }
+.stat-line i { height: 7px; overflow: hidden; border-radius: 99px; background: #171218; }
+.stat-line b { display: block; height: 100%; border-radius: inherit; transition: width .4s ease; }
+.hp-bar b { background: #bd5560; }
+.mana-bar b { background: #5b9bd5; }
+.battle-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.battle-tags span { padding: 2px 5px; border-radius: 4px; background: #382c3a; color: #d2c5b2; font-size: .68rem; }
+.battle-tags .buff { color: #9ad88f; }
+.battle-tags .debuff, .battle-tags .control { color: #ef9b9b; }
+@keyframes battle-unit-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.battle-report.victory { border-color: #8a783b; }
+.battle-report.defeat { border-color: #8d4654; }
+.survivors { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.survivors span { padding: 5px 8px; border-radius: 6px; background: #302333; font-size: .85rem; }
+.battle-report summary { cursor: pointer; color: #e6a84a; }
+.battle-log { max-height: 250px; overflow: auto; margin: 12px 0 0; padding-left: 28px; color: #d2c5b2; font-size: .88rem; }
+.battle-log li { margin: 6px 0; }
+.battle-log b { color: #f9e9c0; }
 .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; max-width: 620px; margin: 0 auto; }
 .cell { min-height: 72px; color: #f9e9c0; background: #302333; border: 1px solid #654b5d; border-radius: 8px; padding: 4px; font-size: .78rem; }
 .cell:hover { border-color: #e6a84a; }
-@media (max-width: 600px) { .arena { grid-template-columns: 1fr; gap: 12px; } }
+@media (max-width: 600px) {
+  main { width: min(100% - 20px, 900px); padding: 42px 0; }
+  .arena { grid-template-columns: 1fr; gap: 12px; }
+  article, .result, .deployment { padding: 16px; }
+  .roster { justify-content: stretch; }
+  .roster button { flex: 1 1 140px; }
+  .member-actions button { margin-left: 0; margin-right: 6px; }
+  .tactics { display: grid; grid-template-columns: 1fr; }
+  .tactics label { justify-content: space-between; }
+  .tactics select { max-width: 180px; }
+  .battle-state { grid-template-columns: 1fr; }
+  .cell { min-height: 58px; font-size: .68rem; overflow-wrap: anywhere; }
+  .reset-button { margin: 10px 0 0; }
+}

@@ -9,7 +9,8 @@ const footprintSchema = z.object({
 const formulaSchema = z.object({
   base: z.number(),
   lordStat: z.enum(['vitality', 'battlePower', 'crystalRegenSpeed']),
-  multiplier: z.number()
+  multiplier: z.number(),
+  resultMultiplier: z.number().positive().optional()
 });
 
 const actionSchema = z.object({
@@ -20,22 +21,25 @@ const actionSchema = z.object({
   rangeType: z.enum(['melee', 'ranged']),
   formula: formulaSchema,
   targetRule: z.object({
-    side: z.enum(['ally', 'enemy']),
+    side: z.enum(['ally', 'enemy', 'self']),
     selection: z.enum(['nearest', 'lowest_hp', 'highest_threat', 'random', 'self', 'all_in_range', 'corpse_of_dead_ally']),
     count: z.union([z.number().int().positive(), z.string()])
   }),
   cooldown: z.union([z.number(), z.string(), z.null()]),
   manaCost: z.number().nullable(),
   bonusVsRaceType: z.record(z.number()).optional()
-});
+}).passthrough();
 
 const combatSchema = z.object({
   hpFormula: formulaSchema,
   attackSpeed: z.number().positive(),
   leadershipCost: z.number().int().positive(),
   actions: z.array(actionSchema).min(1),
-  evolutions: z.array(z.string())
-});
+  evolutions: z.array(z.string()),
+  expToUpgrade: z.number().int().positive().nullable().optional(),
+  expRewardOnKill: z.number().int().positive().optional(),
+  passives: z.array(z.object({ id: z.string(), effect: z.string() }).passthrough()).optional()
+}).passthrough();
 
 const unitSchema = z.object({
   id: z.string().min(1),
