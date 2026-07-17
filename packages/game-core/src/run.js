@@ -1,5 +1,78 @@
-import { getEmpireUnit } from './catalog.js';
+import { empireUnits, getEmpireUnit } from './catalog.js';
 import { getEmpireLord } from './lords.js';
+
+const enemyProfiles = {
+  safe: { leadership: 4, growth: 1, maxUnits: 2, label: 'Легкий загін' },
+  rich: { leadership: 8, growth: 2, maxUnits: 4, label: 'Середній загін' },
+  risky: { leadership: 12, growth: 3, maxUnits: 6, label: 'Важкий загін' }
+};
+
+function createEnemyRng(seed) {
+  let state = Number(seed) >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function fitsEnemyPlacement(occupied, footprint, position) {
+  if (position.row + footprint.rows > 3 || position.column + footprint.columns > 5) return false;
+  for (let row = position.row; row < position.row + footprint.rows; row += 1) {
+    for (let column = position.column; column < position.column + footprint.columns; column += 1) {
+      if (occupied.has(`${row}:${column}`)) return false;
+    }
+  }
+  return true;
+}
+
+function placeEnemyUnit(unit, occupied) {
+  const footprint = unit.gridFootprint ?? { rows: 1, columns: 1 };
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 0; column < 5; column += 1) {
+      const position = { row, column };
+      if (!fitsEnemyPlacement(occupied, footprint, position)) continue;
+      for (let occupiedRow = row; occupiedRow < row + footprint.rows; occupiedRow += 1) {
+        for (let occupiedColumn = column; occupiedColumn < column + footprint.columns; occupiedColumn += 1) occupied.add(`${occupiedRow}:${occupiedColumn}`);
+      }
+      return position;
+    }
+  }
+  return null;
+}
+
+/** Створює армію Імперії без бонусів лорда для одного зі шляхів. */
+export function generateEnemyArmy({ pathId, difficulty = 1, seed = 1 }) {
+  const profile = enemyProfiles[pathId] ?? enemyProfiles.safe;
+  const leadershipBudget = profile.leadership + (difficulty - 1) * profile.growth;
+  const maxTier = difficulty >= 7 ? 3 : difficulty >= 3 ? 2 : 1;
+  const rng = createEnemyRng(seed);
+  const candidates = Array.from({ length: maxTier }, (_, index) => index + 1)
+    .flatMap((tier) => {
+      const units = getEmpireUnitsByTier(tier);
+      return units;
+    });
+  const army = [];
+  let usedLeadership = 0;
+  let attempts = 0;
+  while (army.length < profile.maxUnits && attempts < 100) {
+    attempts += 1;
+    const score = (unit) => unit.combat.leadershipCost * unit.tier;
+    const minScore = Math.min(...candidates.map(score));
+    const slotsAfterPick = profile.maxUnits - army.length - 1;
+    const affordable = candidates.filter((unit) => usedLeadership + score(unit) + minScore * slotsAfterPick <= leadershipBudget);
+    if (!affordable.length) break;
+    const unit = affordable[Math.floor(rng() * affordable.length)];
+    army.push({ ...unit, id: `enemy-${unit.id}-${army.length + 1}`, unitId: unit.id });
+    usedLeadership += score(unit);
+  }
+  const occupied = new Set();
+  const units = army.map((unit) => ({ ...unit, position: placeEnemyUnit(unit, occupied) })).filter((unit) => unit.position);
+  return { label: profile.label, leadershipBudget, leadershipUsed: usedLeadership, units };
+}
+
+function getEmpireUnitsByTier(tier) {
+  return empireUnits.filter((unit) => unit.tier === tier);
+}
 
 export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
   const lord = getEmpireLord(lordId) ?? getEmpireLord('empire_lord_henrik');

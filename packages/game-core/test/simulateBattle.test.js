@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, simulateBattle, simulateBattleSeries, spendActionResources } from '../src/index.js';
+import { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, simulateBattle, simulateBattleSeries, spendActionResources } from '../src/index.js';
 
 const allies = [
   { id: 'guard', maxHp: 24, attack: 7, critChance: 0.2 }
@@ -338,5 +338,18 @@ describe('run loop', () => {
     const result = applyActionEffect(action, {}, [target], () => 1, attacker);
     expect(result.changes[0]).toMatchObject({ hpAfter: 0 });
     expect(result.changes[0].mercyDamage).toBeCloseTo(1.7);
+  });
+
+  it('creates reproducible Empire enemy armies within a growing leadership budget', () => {
+    const safe = generateEnemyArmy({ pathId: 'safe', difficulty: 1, seed: 42 });
+    const risky = generateEnemyArmy({ pathId: 'risky', difficulty: 3, seed: 42 });
+
+    expect(safe).toEqual(generateEnemyArmy({ pathId: 'safe', difficulty: 1, seed: 42 }));
+    expect(safe.leadershipBudget).toBe(4);
+    expect(safe.leadershipUsed).toBeLessThanOrEqual(4);
+    expect(safe.units).toHaveLength(2);
+    expect(risky.leadershipBudget).toBe(18);
+    expect(risky.leadershipUsed).toBeLessThanOrEqual(risky.leadershipBudget);
+    expect(new Set(risky.units.map((unit) => `${unit.position.row}:${unit.position.column}`)).size).toBe(risky.units.length);
   });
 });

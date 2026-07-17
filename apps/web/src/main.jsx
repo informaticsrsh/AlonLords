@@ -1,13 +1,21 @@
 /* eslint-disable react/prop-types */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { choosePath, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, updateArmyMember } from '@empire/game-core';
+import { choosePath, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
 const allies = [{ id: 'imperial-guard', name: 'Імперський страж', maxHp: 30, attack: 8, critChance: 0.15 }];
 const enemies = [{ id: 'raider', name: 'Прикордонний рейдер', maxHp: 24, attack: 6, critChance: 0.1 }];
 const roster = empireUnits.filter((unit) => unit.tier === 1);
 const runStorageKey = 'empire-lords.run.v1';
+const factions = [{
+  id: 'empire',
+  name: 'Імперія',
+  emblem: '✥',
+  feature: 'Віра',
+  description: 'Починає кожен бій з 50 Віри. Віра зростає за знищення ворогів та зменшується від втрат союзників.',
+  mechanic: 'Висока Віра прискорює дії армії, низька — сповільнює. Лорди Імперії по-своєму змінюють цю механіку.'
+}];
 
 function describeBattleEvent(event) {
   if (event.type === 'death') return `${event.unitId} вибуває з бою`;
@@ -32,6 +40,41 @@ function BattleUnitCard({ unit, activeId, targetId }) {
       {!cooldowns.length && !(unit.effects ?? []).length && <span>без ефектів</span>}
     </div>
   </article>;
+}
+
+function BattleFormation({ title, units, activeId, targetId }) {
+  const unitAt = (row, column) => units.find((unit) => unit.position?.row === row && unit.position?.column === column);
+  return <div className="formation"><h4>{title}</h4><div className="formation-grid">
+    {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
+      const unit = unitAt(row, column);
+      const hpPercent = unit?.maxHp ? Math.max(0, Math.min(100, unit.hp / unit.maxHp * 100)) : 0;
+      return <div className={`formation-cell ${unit ? 'occupied' : ''} ${unit?.id === activeId ? 'acting' : ''} ${unit?.id === targetId ? 'targeted' : ''}`} key={`${row}-${column}`}>
+        {unit && <><b>{unit.name}</b><i><span style={{ width: `${hpPercent}%` }} /></i><small>{Math.round(unit.hp)}/{Math.round(unit.maxHp)}</small></>}
+      </div>;
+    }))}
+  </div></div>;
+}
+
+function getPlaybackState(playback) {
+  const units = [...playback.initialAllies, ...playback.initialEnemies].map((unit) => ({ ...unit }));
+  const byId = new Map(units.map((unit) => [unit.id, unit]));
+  let faith = 50;
+  for (const event of playback.battle.events.slice(0, playback.index)) {
+    if (event.targetId && typeof event.hpAfter === 'number') {
+      const target = byId.get(event.targetId);
+      if (target) target.hp = event.hpAfter;
+    }
+    if (event.type === 'death') {
+      const target = byId.get(event.unitId);
+      if (target) target.hp = 0;
+    }
+    if (event.type === 'faith') faith = event.value;
+  }
+  return { units: byId, faith };
+}
+
+function formationSeed(run, path) {
+  return run.seed + run.difficulty * 100 + path.id.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
 }
 
 function loadRun() {
@@ -69,6 +112,7 @@ function App() {
   const [screen, setScreen] = useState('menu');
   const [showSettings, setShowSettings] = useState(false);
   const [selectedLordId, setSelectedLordId] = useState('empire_lord_henrik');
+  const [selectedFactionId, setSelectedFactionId] = useState('empire');
   const [hubView, setHubView] = useState('hub');
   const [battlePlayback, setBattlePlayback] = useState(null);
   const paths = createPaths(run.difficulty);
@@ -76,6 +120,7 @@ function App() {
   const hasBattleReadyUnit = run.army.some((member) => member.hp !== 0);
   const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
   const playbackEvent = battlePlayback?.battle.events[Math.max(0, battlePlayback.index - 1)] ?? null;
+  const playbackState = battlePlayback ? getPlaybackState(battlePlayback) : null;
 
   useEffect(() => {
     window.localStorage.setItem(runStorageKey, JSON.stringify(run));
@@ -103,8 +148,9 @@ function App() {
       unit.hp = member.hp ?? unit.maxHp;
       return unit;
     });
-    const enemyHp = 20 + run.selectedPath.threat * 8;
-    const enemiesInBattle = Array.from({ length: Math.max(1, run.selectedPath.threat) }, (_, index) => ({ id: `raider-${index}`, maxHp: enemyHp, attack: 4 + run.selectedPath.threat, position: { row: 0, column: index % 5 } }));
+    const enemyArmy = generateEnemyArmy({ pathId: run.selectedPath.id, difficulty: run.difficulty, seed: formationSeed(run, run.selectedPath) });
+    const enemyLord = { vitality: 0, battlePower: 0, crystalRegenSpeed: 0 };
+    const enemiesInBattle = enemyArmy.units.map((member) => ({ ...createUnitInstance(getEmpireUnit(member.unitId), enemyLord), id: member.id, position: member.position, lord: enemyLord }));
     const battle = simulateBattle({ allies: alliesInBattle, enemies: enemiesInBattle, lord, seed: run.seed + run.difficulty });
     const victory = battle.winner === 'ally';
     const report = {
@@ -116,7 +162,8 @@ function App() {
       allies: battle.allies,
       enemies: battle.enemies,
       faith: Math.round(battle.battleSpirit),
-      crystal: battle.allyCrystal
+      crystal: battle.allyCrystal,
+      enemyArmy
     };
     const hpByInstance = new Map(battle.allies.map((unit) => [unit.id, unit.hp]));
     const updatedArmy = run.army.map((member) => ({ ...member, hp: hpByInstance.get(member.instanceId) ?? 0 }));
@@ -151,11 +198,7 @@ function App() {
     <h1>Empire Lords</h1>
     <p className="lead">Зберіть армію Імперії, оберіть маршрут і переживіть нескінченний забіг.</p>
     <section className="menu-panel">
-      <p className="menu-label">Оберіть лорда кампанії</p>
-      <div className="lord-choices">
-        {empireLords.map((candidate) => <button className={`lord-choice ${selectedLordId === candidate.id ? 'selected' : ''}`} key={candidate.id} onClick={() => setSelectedLordId(candidate.id)}><b>{candidate.name}</b><span>{candidate.description}</span><small>БС {candidate.battlePower} · Витривалість {candidate.vitality} · Кристал {candidate.crystalVolume}</small></button>)}
-      </div>
-      <button className="menu-primary" onClick={startNewRun}>Новий забіг</button>
+      <button className="menu-primary" onClick={() => setScreen('faction')}>Нова гра</button>
       <button className="menu-button" onClick={() => setScreen('game')}>Продовжити забіг</button>
       <button className="menu-button" onClick={() => setShowSettings((value) => !value)}>Налаштування</button>
       {showSettings && <div className="settings-panel">
@@ -165,6 +208,32 @@ function App() {
     </section>
     <p className="menu-note">Порядок гри: вибір армії → розстановка → маршрут → бій.</p>
   </main>;
+
+  if (screen === 'faction') {
+    const faction = factions.find((item) => item.id === selectedFactionId) ?? factions[0];
+    const availableLords = empireLords.filter(() => faction.id === 'empire');
+    const selectedLord = getEmpireLord(selectedLordId);
+    return <main className="faction-select">
+      <button className="back-menu" onClick={() => setScreen('menu')}>← Головне меню</button>
+      <p className="eyebrow">Нова кампанія</p>
+      <h1>Оберіть фракцію та лорда</h1>
+      <div className="faction-layout">
+        <aside className="faction-list" aria-label="Список фракцій">
+          {factions.map((item) => <button className={`faction-card ${item.id === faction.id ? 'selected' : ''}`} key={item.id} onClick={() => setSelectedFactionId(item.id)}><i>{item.emblem}</i><span><b>{item.name}</b><small>{item.feature}</small></span></button>)}
+          <div className="faction-feature"><b>{faction.emblem} {faction.feature}</b><p>{faction.description}</p><p>{faction.mechanic}</p></div>
+        </aside>
+        <section className="lords-gallery">
+          <div className="lord-gallery-list">
+            {availableLords.map((candidate) => <button className={`lord-gallery-card ${candidate.id === selectedLordId ? 'selected' : ''}`} key={candidate.id} onClick={() => setSelectedLordId(candidate.id)}><span className="mini-portrait">{candidate.name[0]}</span><span><b>{candidate.name}</b><small>{candidate.description}</small></span></button>)}
+          </div>
+          <article className="lord-detail">
+            <div className="lord-portrait" aria-label={`Портрет ${selectedLord.name}`}>{selectedLord.name[0]}</div>
+            <div><p className="eyebrow">Лорд Імперії</p><h2>{selectedLord.name}</h2><p>{selectedLord.description}</p><dl className="lord-stats"><div><dt>Бойова сила</dt><dd>{selectedLord.battlePower}</dd></div><div><dt>Витривалість</dt><dd>{selectedLord.vitality}</dd></div><div><dt>Лідерство</dt><dd>{selectedLord.leadership}</dd></div><div><dt>Кристал</dt><dd>{selectedLord.crystalVolume}</dd></div></dl><section className="lord-skill"><b>{selectedLord.id === 'empire_lord_arthur' ? 'Удар милосердя' : 'Посилена Віра'}</b><p>{selectedLord.id === 'empire_lord_arthur' ? 'Здорові союзники завдають додаткової шкоди пораненим ворогам і добивають їх на низькому HP.' : 'Віра за знищених ворогів зростає швидше, а втрата Віри від союзників менша.'}</p></section><button className="menu-primary" onClick={startNewRun}>Обрати лорда й почати</button></div>
+          </article>
+        </section>
+      </div>
+    </main>;
+  }
 
   return (
     <main>
@@ -248,17 +317,21 @@ function App() {
           <h3>3. Оберіть маршрут і почніть бій</h3>
           <p>Виберіть одного з трьох противників. Перед боєм можете змінити розстановку вище.</p>
           <div className="roster">
-            {paths.map((path) => <button key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}>{path.name} · {path.goldReward} золота{path.expReward ? ` · ${path.expReward} EXP` : ''}{path.economicLimitReward ? ` · +${path.economicLimitReward} ліміту` : ''}{path.mineReward ? ' · рудник' : ''} · загроза {path.threat}</button>)}
+            {paths.map((path) => {
+              const enemyArmy = generateEnemyArmy({ pathId: path.id, difficulty: run.difficulty, seed: formationSeed(run, path) });
+              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name} · {enemyArmy.label}</b><span>Лідерство ворога: {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>{path.goldReward} золота · загроза {path.threat}</em></button>;
+            })}
           </div>
           <button className="reset-button" onClick={() => setHubView('hub')}>← Повернутися до Hub</button>
           </>}
         </>}
         {run.phase === 'battle' && !battlePlayback && <section className="battle-ready"><h3>Противник обраний: {run.selectedPath.name}</h3><p>Загроза {run.selectedPath.threat}. Армія готова — натисніть, щоб розпочати автобій.</p><button className="battle-button" onClick={resolveRunBattle}>В бій</button></section>}
         {battlePlayback && <section className="battle-playback" aria-live="polite">
-          <div className="playback-heading"><div><b>Автобій триває</b><span>Подія {Math.min(battlePlayback.index, battlePlayback.battle.events.length)}/{battlePlayback.battle.events.length}</span></div><strong>{playbackEvent ? describeBattleEvent(playbackEvent) : 'Армії займають позиції…'}</strong></div>
-          <div className="battle-state" aria-label="Псевдографічне поле бою">
-            <div><h4>Імперія</h4>{battlePlayback.initialAllies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} />)}</div>
-            <div><h4>Противники</h4>{battlePlayback.initialEnemies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} />)}</div>
+          <div className="playback-heading"><div><b>Автобій триває</b><span>Подія {Math.min(battlePlayback.index, battlePlayback.battle.events.length)}/{battlePlayback.battle.events.length}</span></div><strong>{playbackEvent ? describeBattleEvent(playbackEvent) : 'Армії займають позиції…'}</strong><em>Віра: {Math.round(playbackState.faith)}/100 · Кристал: {Math.round(battlePlayback.battle.allyCrystal.mana)}/{battlePlayback.battle.allyCrystal.manaMax}</em></div>
+          <div className="battlefield" aria-label="Поле бою з розміщенням армій">
+            <BattleFormation title="Імперія" units={battlePlayback.initialAllies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} />
+            <strong className="battlefield-versus">VS</strong>
+            <BattleFormation title="Ворожа армія Імперії" units={battlePlayback.initialEnemies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} />
           </div>
           <div className={`action-flash ${playbackEvent?.type ?? 'ready'}`}>{playbackEvent?.type === 'heal' ? '✦ Зцілення' : playbackEvent?.type === 'control' ? '⚡ Контроль' : playbackEvent?.type === 'death' ? '☠ Загибель' : '✹ Удар'}</div>
         </section>}

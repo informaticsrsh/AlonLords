@@ -3,7 +3,7 @@ import { getBattleLordStats, getEmpireLord } from './lords.js';
 
 export { empireUnits, getEmpireUnit } from './catalog.js';
 export { empireLords, getBattleLordStats, getEmpireLord } from './lords.js';
-export { choosePath, createPaths, createRun, evolveUnit, finishBattle, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
+export { choosePath, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
 export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, regenerateCrystal, resolveAction, selectAutomaticAction, selectTargets, spendActionResources, spendCrystalResources } from './actions.js';
 
 export function createUnitInstance(definition, lord) {
@@ -146,6 +146,8 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
               attackerId: attacker.id,
               targetId: change.targetId,
               amount: change.damage || resolution.amount,
+              hpBefore: change.hpBefore,
+              hpAfter: change.hpAfter,
               isCritical: change.critical,
               actionId: action.id
             });
@@ -164,17 +166,29 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
                 const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? Math.max(0.5, 1 - 0.02 * lord.level) : 1);
                 state.battleSpirit = Math.max(0, state.battleSpirit - faithLoss);
               }
+              state.events.push({ type: 'faith', round: state.round, value: state.battleSpirit });
             }
           }
         } else {
           const target = firstLiving(defenders);
           const isCritical = rng() < (attacker.critChance ?? 0);
           const damage = attacker.attack * (isCritical ? 2 : 1);
+          const hpBefore = target.hp;
           target.hp = Math.max(0, target.hp - damage);
           state.events.push({
-            type: 'attack', round: state.round, attackerId: attacker.id, targetId: target.id, damage, isCritical, actionId: 'basic_attack'
+            type: 'attack', round: state.round, attackerId: attacker.id, targetId: target.id, damage, hpBefore, hpAfter: target.hp, isCritical, actionId: 'basic_attack'
           });
-          if (target.hp === 0) state.events.push({ type: 'death', round: state.round, unitId: target.id });
+          if (target.hp === 0) {
+            state.events.push({ type: 'death', round: state.round, unitId: target.id });
+            if (side === 'ally') {
+              const faithGain = 10 * (lord.id === 'empire_lord_henrik' ? Math.min(1.3 + 0.03 * lord.level, 2) : 1);
+              state.battleSpirit = Math.min(100, state.battleSpirit + faithGain);
+            } else {
+              const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? Math.max(0.5, 1 - 0.02 * lord.level) : 1);
+              state.battleSpirit = Math.max(0, state.battleSpirit - faithLoss);
+            }
+            state.events.push({ type: 'faith', round: state.round, value: state.battleSpirit });
+          }
         }
 
         if (!firstLiving(defenders)) {

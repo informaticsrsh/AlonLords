@@ -6,6 +6,34 @@ main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 88px 0; te
 h1 { font: 700 clamp(3rem, 12vw, 6rem)/.9 Georgia, serif; margin: 0; }
 .lead { max-width: 570px; margin: 28px auto 48px; color: #d2c5b2; }
 .start-menu { display: grid; place-items: center; min-height: 100vh; padding-top: 48px; padding-bottom: 48px; }
+.faction-select { max-width: 1180px; text-align: left; }
+.faction-select > h1, .faction-select > .eyebrow { text-align: center; }
+.faction-layout { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(0, 2.4fr); gap: 18px; margin-top: 28px; }
+.faction-list, .lords-gallery { padding: 16px; border: 1px solid #594150; border-radius: 14px; background: #211923; }
+.faction-list { display: grid; align-content: start; gap: 10px; }
+.faction-card { display: flex; gap: 10px; align-items: center; color: #f9e9c0; border: 1px solid #75566a; border-radius: 8px; background: #302333; padding: 10px; text-align: left; }
+.faction-card.selected { border-color: #e6a84a; background: #5a3e20; }
+.faction-card i { color: #e6a84a; font-size: 1.8rem; font-style: normal; }
+.faction-card span, .lord-gallery-card span { display: grid; gap: 3px; }
+.faction-card small, .lord-gallery-card small { color: #d2c5b2; }
+.faction-feature { padding: 12px; color: #d2c5b2; border-radius: 8px; background: #302333; font-size: .87rem; }
+.faction-feature p { margin: 8px 0 0; }
+.lords-gallery { display: grid; grid-template-columns: minmax(190px, .75fr) minmax(0, 1.7fr); gap: 16px; }
+.lord-gallery-list { display: grid; align-content: start; gap: 8px; }
+.lord-gallery-card { display: flex; gap: 9px; align-items: center; color: #f9e9c0; border: 1px solid #75566a; border-radius: 8px; background: #302333; padding: 9px; text-align: left; }
+.lord-gallery-card.selected { border-color: #e6a84a; background: #5a3e20; }
+.mini-portrait, .lord-portrait { display: grid; place-items: center; flex: 0 0 auto; font: 700 2rem Georgia, serif; color: #20150b; background: radial-gradient(circle at 35% 30%, #ffe3a0, #b5722d); border: 2px solid #e6a84a; border-radius: 50%; }
+.mini-portrait { width: 42px; height: 42px; font-size: 1.2rem; }
+.lord-detail { display: grid; grid-template-columns: 160px 1fr; gap: 20px; align-items: start; }
+.lord-detail h2 { margin: 0; }
+.lord-detail > div:last-child > p { color: #d2c5b2; }
+.lord-portrait { width: 160px; height: 160px; font-size: 5rem; }
+.lord-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin: 14px 0; }
+.lord-stats div, .lord-skill { padding: 8px; border-radius: 7px; background: #302333; }
+.lord-stats dt { color: #d2c5b2; font-size: .72rem; }
+.lord-stats dd { margin: 2px 0 0; color: #e6a84a; font-weight: 700; }
+.lord-skill { margin-bottom: 14px; }
+.lord-skill p { margin: 5px 0 0; font-size: .85rem; }
 .menu-panel { display: grid; width: min(420px, 100%); gap: 10px; padding: 22px; border: 1px solid #594150; border-radius: 16px; background: #211923; }
 .menu-label { margin: 0; color: #e6a84a; font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
 .lord-choices { display: grid; gap: 8px; }
@@ -30,6 +58,9 @@ article h2, .result h2 { margin-top: 0; }
 button { font: inherit; cursor: pointer; }
 .roster button { color: #f9e9c0; background: #382c3a; border: 1px solid #75566a; border-radius: 8px; padding: 8px 12px; }
 .roster .recruit-card { display: grid; min-width: 140px; gap: 4px; text-align: left; }
+.roster .enemy-choice { display: grid; flex: 1 1 220px; gap: 5px; text-align: left; }
+.enemy-choice span, .enemy-choice small { color: #d2c5b2; font-size: .77rem; }
+.enemy-choice em { color: #e6a84a; font-size: .78rem; font-style: normal; }
 .recruit-card span { color: #d2c5b2; font-size: .78rem; }
 .recruit-card small { color: #e6a84a; font-weight: 700; }
 .roster button.selected { border-color: #e6a84a; background: #5a3e20; }
@@ -41,10 +72,23 @@ button { font: inherit; cursor: pointer; }
 .battle-ready { margin-top: 16px; padding: 20px; border: 1px solid #9d7535; border-radius: 10px; background: #302417; }
 .battle-ready h3 { margin-top: 0; }
 .battle-playback { margin-top: 16px; padding: 18px; overflow: hidden; border: 1px solid #e6a84a; border-radius: 12px; background: radial-gradient(circle at center, #3a2b23, #1c1620 70%); }
+.battlefield { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; margin-top: 16px; }
+.battlefield-versus { color: #e6a84a; font: 700 1.4rem Georgia, serif; }
+.formation h4 { margin: 0 0 7px; color: #e6a84a; font-size: .85rem; }
+.formation-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.formation-cell { display: grid; min-height: 62px; align-content: center; gap: 3px; padding: 4px; border: 1px solid #4d3b4c; border-radius: 5px; background: #241d27; }
+.formation-cell.occupied { border-color: #75566a; background: #382c3a; }
+.formation-cell b { overflow: hidden; color: #f9e9c0; font-size: .62rem; line-height: 1.1; text-overflow: ellipsis; }
+.formation-cell small { color: #d2c5b2; font-size: .6rem; }
+.formation-cell i { display: block; height: 5px; overflow: hidden; border-radius: 99px; background: #171218; }
+.formation-cell i span { display: block; height: 100%; background: #bd5560; transition: width .2s linear; }
+.formation-cell.acting { border-color: #e6a84a; box-shadow: 0 0 12px #e6a84a88; animation: unit-act .23s ease both; }
+.formation-cell.targeted { border-color: #c95864; box-shadow: 0 0 10px #c9586488; animation: unit-hit .23s ease both; }
 .playback-heading { display: grid; gap: 8px; text-align: left; }
 .playback-heading div { display: flex; justify-content: space-between; color: #e6a84a; }
 .playback-heading span { color: #d2c5b2; font-size: .8rem; }
 .playback-heading strong { min-height: 1.4em; color: #f9e9c0; }
+.playback-heading em { color: #e6a84a; font-size: .82rem; font-style: normal; }
 .battle-unit.acting { border-color: #e6a84a; box-shadow: 0 0 16px #e6a84a88; animation: unit-act .23s ease both; }
 .battle-unit.targeted { border-color: #c95864; box-shadow: 0 0 14px #c9586488; animation: unit-hit .23s ease both; }
 .action-flash { margin: 12px auto 0; width: fit-content; padding: 7px 14px; border-radius: 99px; color: #20150b; background: #e6a84a; font-weight: 700; animation: action-flash .23s ease both; }
@@ -102,6 +146,11 @@ button { font: inherit; cursor: pointer; }
   .tactics label { justify-content: space-between; }
   .tactics select { max-width: 180px; }
   .battle-state { grid-template-columns: 1fr; }
+  .battlefield { grid-template-columns: 1fr; }
+  .battlefield-versus { text-align: center; }
+  .faction-layout, .lords-gallery { grid-template-columns: 1fr; }
+  .lord-detail { grid-template-columns: 1fr; }
+  .lord-portrait { width: 120px; height: 120px; font-size: 4rem; }
   .cell { min-height: 58px; font-size: .68rem; overflow-wrap: anywhere; }
   .reset-button { margin: 10px 0 0; }
 }
