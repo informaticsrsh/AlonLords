@@ -5,6 +5,14 @@ main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 88px 0; te
 .eyebrow { color: #e6a84a; letter-spacing: .12em; text-transform: uppercase; font-size: .8rem; }
 h1 { font: 700 clamp(3rem, 12vw, 6rem)/.9 Georgia, serif; margin: 0; }
 .lead { max-width: 570px; margin: 28px auto 48px; color: #d2c5b2; }
+.start-menu { display: grid; place-items: center; min-height: 100vh; padding-top: 48px; padding-bottom: 48px; }
+.menu-panel { display: grid; width: min(420px, 100%); gap: 10px; padding: 22px; border: 1px solid #594150; border-radius: 16px; background: #211923; }
+.menu-primary, .menu-button { border-radius: 8px; padding: 12px 16px; font-weight: 700; }
+.menu-primary { color: #20150b; border: 0; background: #e6a84a; }
+.menu-button { color: #f9e9c0; border: 1px solid #75566a; background: #382c3a; }
+.settings-panel { padding: 12px; border-radius: 8px; background: #302333; color: #d2c5b2; text-align: left; font-size: .9rem; }
+.menu-note { color: #d2c5b2; font-size: .9rem; }
+.back-menu { float: right; color: #d2c5b2; border: 1px solid #75566a; border-radius: 7px; background: transparent; padding: 6px 9px; }
 .arena { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; }
 article, .result { background: #271d27; border: 1px solid #594150; border-radius: 16px; padding: 24px; }
 article h2, .result h2 { margin-top: 0; }
@@ -15,11 +23,17 @@ article h2, .result h2 { margin-top: 0; }
 .roster { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
 button { font: inherit; cursor: pointer; }
 .roster button { color: #f9e9c0; background: #382c3a; border: 1px solid #75566a; border-radius: 8px; padding: 8px 12px; }
+.roster .recruit-card { display: grid; min-width: 140px; gap: 4px; text-align: left; }
+.recruit-card span { color: #d2c5b2; font-size: .78rem; }
+.recruit-card small { color: #e6a84a; font-weight: 700; }
 .roster button.selected { border-color: #e6a84a; background: #5a3e20; }
 .roster button:disabled { cursor: not-allowed; opacity: .45; }
 .battle-button { color: #20150b; background: #e6a84a; border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 700; }
 .reset-button { margin-left: 10px; color: #d2c5b2; background: transparent; border: 1px solid #75566a; border-radius: 8px; padding: 10px 16px; }
 .army-actions { display: grid; gap: 8px; text-align: left; margin: 18px 0; }
+.army-summary { padding: 10px; border-left: 3px solid #e6a84a; background: #302333; text-align: left; }
+.battle-ready { margin-top: 16px; padding: 20px; border: 1px solid #9d7535; border-radius: 10px; background: #302417; }
+.battle-ready h3 { margin-top: 0; }
 .member-actions { padding: 10px; border: 1px solid #594150; border-radius: 8px; }
 .member-actions button { margin: 6px 0 0 8px; color: #f9e9c0; background: #382c3a; border: 1px solid #75566a; border-radius: 6px; padding: 4px 8px; }
 .tactics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; color: #d2c5b2; font-size: .85rem; }
@@ -58,6 +72,7 @@ button { font: inherit; cursor: pointer; }
   article, .result, .deployment { padding: 16px; }
   .roster { justify-content: stretch; }
   .roster button { flex: 1 1 140px; }
+  .back-menu { float: none; margin-bottom: 16px; }
   .member-actions button { margin-left: 0; margin-right: 6px; }
   .tactics { display: grid; grid-template-columns: 1fr; }
   .tactics label { justify-content: space-between; }

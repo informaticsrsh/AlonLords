@@ -61,8 +61,11 @@ function App() {
   const [grid, setGrid] = useState(() => gridFromRun(run));
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [lastBattle, setLastBattle] = useState(null);
+  const [screen, setScreen] = useState('menu');
+  const [showSettings, setShowSettings] = useState(false);
   const paths = createPaths(run.difficulty);
   const hasBattleReadyUnit = run.army.some((member) => member.hp !== 0);
+  const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
 
   useEffect(() => {
     window.localStorage.setItem(runStorageKey, JSON.stringify(run));
@@ -108,9 +111,35 @@ function App() {
     setRun((current) => finishBattle(current, { victory, army: updatedArmy }));
   };
 
+  const startNewRun = () => {
+    const newRun = createRun();
+    setRun(newRun);
+    setGrid(gridFromRun(newRun));
+    setLastBattle(null);
+    setSelectedMemberId(null);
+    setScreen('game');
+  };
+
+  if (screen === 'menu') return <main className="start-menu">
+    <p className="eyebrow">Imperial command</p>
+    <h1>Empire Lords</h1>
+    <p className="lead">Зберіть армію Імперії, оберіть маршрут і переживіть нескінченний забіг.</p>
+    <section className="menu-panel">
+      <button className="menu-primary" onClick={startNewRun}>Новий забіг</button>
+      <button className="menu-button" onClick={() => setScreen('game')}>Продовжити забіг</button>
+      <button className="menu-button" onClick={() => setShowSettings((value) => !value)}>Налаштування</button>
+      {showSettings && <div className="settings-panel">
+        <p><b>Seed поточного забігу:</b> {run.seed}</p>
+        <p>Режим «Кампанія» доступний зараз. Інші режими буде додано пізніше.</p>
+      </div>}
+    </section>
+    <p className="menu-note">Порядок гри: вибір армії → розстановка → маршрут → бій.</p>
+  </main>;
+
   return (
     <main>
-      <p className="eyebrow">Вертикальний зріз</p>
+      <button className="back-menu" onClick={() => setScreen('menu')}>← Головне меню</button>
+      <p className="eyebrow">Кампанія · забіг</p>
       <h1>Empire Lords</h1>
       <p className="lead">Детермінований автобій: той самий seed завжди дає той самий результат.</p>
       <section className="arena" aria-label="Результат тестового бою">
@@ -124,12 +153,14 @@ function App() {
       </section>
       <section className="deployment hub">
         <h2>{run.phase === 'hub' ? 'Hub — підготовка' : run.phase === 'battle' ? 'Обраний шлях' : 'Забіг завершено'}</h2>
-        <p>Життя: {run.lives} · Золото: {run.gold} · Рудники: {run.mines} (+{run.mines} золота за перемогу) · Ліміт лідерства: {run.economicLimit} · Складність: {run.difficulty}</p>
+        <p>Життя: {run.lives} · Золото: {run.gold} · Рудники: {run.mines} (+{run.mines} золота за перемогу) · Лідерство: {leadershipUsed}/{run.economicLimit} · Складність: {run.difficulty}</p>
         {run.phase === 'hub' && <>
+          <h3>1. Зберіть армію</h3>
+          <p>Натисніть картку юніта, щоб найняти його. Вартість у дужках — лідерство.</p>
           <div className="roster">
-            {roster.map((unit) => <button key={unit.id} onClick={() => setRun((current) => recruitUnit(current, unit.id))}>Найняти: {unit.name} ({unit.combat.leadershipCost})</button>)}
+            {roster.map((unit) => <button className="recruit-card" key={unit.id} onClick={() => setRun((current) => recruitUnit(current, unit.id))}><b>{unit.name}</b><span>{unit.role} · {unit.combat.leadershipCost} лідерства</span><small>Найняти</small></button>)}
           </div>
-          <p>Армія: {run.army.length ? run.army.map((member) => `${getEmpireUnit(member.unitId).name} (${member.hp ?? 'повне'} HP)`).join(', ') : 'ще порожня'}</p>
+          <p className="army-summary">Ваша армія: {run.army.length ? run.army.map((member) => getEmpireUnit(member.unitId).name).join(', ') : 'ще порожня — найміть хоча б одного юніта.'}</p>
           <div className="army-actions">
             {run.army.map((member) => {
               const unit = getEmpireUnit(member.unitId);
@@ -162,11 +193,26 @@ function App() {
               </div>;
             })}
           </div>
+          <section className="deployment compact-deployment">
+            <h3>2. Розставте армію</h3>
+            <p>Виберіть юніта нижче, а потім клітинку. Позиція зберігається; лицар займає дві клітинки по вертикалі.</p>
+            <div className="roster">
+              {run.army.map((member) => <button className={selectedMemberId === member.instanceId ? 'selected' : ''} key={member.instanceId} onClick={() => setSelectedMemberId(member.instanceId)}>{getEmpireUnit(member.unitId).name}</button>)}
+            </div>
+            <div className="grid" role="grid" aria-label="Сітка розміщення армії">
+              {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
+                const placement = placedAt(row, column);
+                return <button className="cell" key={`${row}-${column}`} onClick={() => selectCell(row, column)}>{placement?.unit.name ?? ''}</button>;
+              }))}
+            </div>
+          </section>
+          <h3>3. Оберіть маршрут і почніть бій</h3>
+          <p>Після вибору маршруту відкриється екран бою з великою кнопкою запуску.</p>
           <div className="roster">
             {paths.map((path) => <button key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}>{path.name} · {path.goldReward} золота{path.expReward ? ` · ${path.expReward} EXP` : ''}{path.economicLimitReward ? ` · +${path.economicLimitReward} ліміту` : ''}{path.mineReward ? ' · рудник' : ''} · загроза {path.threat}</button>)}
           </div>
         </>}
-        {run.phase === 'battle' && <button className="battle-button" onClick={resolveRunBattle}>Провести автобій</button>}
+        {run.phase === 'battle' && <section className="battle-ready"><h3>Маршрут обрано: {run.selectedPath.name}</h3><p>Загроза {run.selectedPath.threat}. Армія готова — натисніть, щоб розпочати автобій.</p><button className="battle-button" onClick={resolveRunBattle}>Почати бій</button></section>}
         {lastBattle && <section className={`battle-report ${lastBattle.victory ? 'victory' : 'defeat'}`} aria-live="polite">
           <h3>{lastBattle.victory ? 'Перемога' : 'Поразка'} · {lastBattle.rounds} раундів</h3>
           {lastBattle.victory && <p>Нагорода: +{lastBattle.path.goldReward} золота{lastBattle.path.expReward ? ` · +${lastBattle.path.expReward} EXP` : ''}{lastBattle.path.economicLimitReward ? ` · +${lastBattle.path.economicLimitReward} ліміту` : ''}{lastBattle.path.mineReward ? ' · новий рудник' : ''}.</p>}
@@ -186,19 +232,6 @@ function App() {
         </section>}
         {run.phase === 'game_over' && <button className="battle-button" onClick={() => setRun(createRun())}>Почати новий забіг</button>}
         {run.phase === 'hub' && <button className="reset-button" onClick={() => setRun(createRun())}>Скинути забіг</button>}
-      </section>
-      <section className="deployment">
-        <h2>Розміщення армії</h2>
-        <p>Виберіть найнятого юніта й клітинку. Позиція зберігається для наступного бою; лицар займає дві клітинки по вертикалі.</p>
-        <div className="roster">
-          {run.army.map((member) => <button className={selectedMemberId === member.instanceId ? 'selected' : ''} key={member.instanceId} onClick={() => setSelectedMemberId(member.instanceId)}>{getEmpireUnit(member.unitId).name}</button>)}
-        </div>
-        <div className="grid" role="grid" aria-label="Сітка розміщення армії">
-          {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
-            const placement = placedAt(row, column);
-            return <button className="cell" key={`${row}-${column}`} onClick={() => selectCell(row, column)}>{placement?.unit.name ?? ''}</button>;
-          }))}
-        </div>
       </section>
     </main>
   );
