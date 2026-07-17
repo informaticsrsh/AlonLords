@@ -1,8 +1,10 @@
-import { applyActionEffect, applyBattleAuras, beginTurn, evaluateFormula, selectAutomaticAction, spendActionResources } from './actions.js';
+import { applyActionEffect, applyBattleAuras, beginTurn, evaluateFormula, regenerateCrystal, selectAutomaticAction, spendActionResources, spendCrystalResources } from './actions.js';
+import { getBattleLordStats, getEmpireLord } from './lords.js';
 
 export { empireUnits, getEmpireUnit } from './catalog.js';
+export { empireLords, getBattleLordStats, getEmpireLord } from './lords.js';
 export { choosePath, createPaths, createRun, evolveUnit, finishBattle, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
-export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, resolveAction, selectAutomaticAction, selectTargets, spendActionResources } from './actions.js';
+export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, regenerateCrystal, resolveAction, selectAutomaticAction, selectTargets, spendActionResources, spendCrystalResources } from './actions.js';
 
 export function createUnitInstance(definition, lord) {
   if (!definition.combat) {
@@ -19,9 +21,6 @@ export function createUnitInstance(definition, lord) {
     passives: definition.combat.passives ?? [],
     raceType: 'human',
     effects: [],
-    mana: 50,
-    manaMax: 50,
-    manaRegen: 10,
     cooldowns: {}
   };
 }
@@ -90,9 +89,10 @@ function firstLiving(units) {
  * Мінімальний детермінований автобій для вертикального зрізу.
  * Кожен живий юніт атакує першого живого суперника за порядком у складі.
  */
-export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
+export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_lord_henrik'), seed = 1, maxRounds = 50 }) {
   const rng = createRng(seed);
-  const initialAllies = allies.map(cloneUnit);
+  const battleLord = getBattleLordStats(lord);
+  const initialAllies = allies.map((unit) => ({ ...cloneUnit(unit), lord: unit.lord ?? battleLord }));
   const initialEnemies = enemies.map(cloneUnit);
   const alliedAuras = applyBattleAuras(initialAllies, initialEnemies);
   const enemyAuras = applyBattleAuras(alliedAuras.enemies, alliedAuras.units);
@@ -101,11 +101,16 @@ export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
     enemies: enemyAuras.units,
     events: [],
     round: 0,
-    winner: null
+    winner: null,
+    battleSpirit: 50,
+    allyCrystal: { mana: battleLord.crystalVolume, manaMax: battleLord.crystalVolume, manaRegen: battleLord.crystalRegenSpeed },
+    enemyCrystal: { mana: 0, manaMax: 0, manaRegen: 0 }
   };
 
   while (!state.winner && state.round < maxRounds) {
     state.round += 1;
+    state.allyCrystal = regenerateCrystal(state.allyCrystal);
+    state.enemyCrystal = regenerateCrystal(state.enemyCrystal);
 
     for (const [attackers, defenders, side] of [
       [state.allies, state.enemies, 'ally'],
@@ -127,11 +132,13 @@ export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
           break;
         }
 
-        const action = selectAutomaticAction(attacker, attackers, defenders);
+        const crystalKey = side === 'ally' ? 'allyCrystal' : 'enemyCrystal';
+        const action = selectAutomaticAction(attacker, attackers, defenders, state[crystalKey]);
         if (action) {
           const candidates = action.targetRule.side === 'ally' ? attackers : defenders;
           const resolution = applyActionEffect(action, attacker.lord ?? {}, candidates, rng, attacker, action.targetRule.side === 'enemy' ? defenders : attackers);
           attackers[attackerIndex] = spendActionResources(attacker, action);
+          state[crystalKey] = spendCrystalResources(state[crystalKey], action);
           for (const change of resolution.changes) {
             state.events.push({
               type: action.effectKind,
@@ -150,6 +157,13 @@ export function simulateBattle({ allies, enemies, seed = 1, maxRounds = 50 }) {
             }
             if (change.hpAfter === 0) {
               state.events.push({ type: 'death', round: state.round, unitId: change.targetId });
+              if (side === 'ally') {
+                const faithGain = 10 * (lord.id === 'empire_lord_henrik' ? Math.min(1.3 + 0.03 * lord.level, 2) : 1);
+                state.battleSpirit = Math.min(100, state.battleSpirit + faithGain);
+              } else {
+                const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? Math.max(0.5, 1 - 0.02 * lord.level) : 1);
+                state.battleSpirit = Math.max(0, state.battleSpirit - faithLoss);
+              }
             }
           }
         } else {

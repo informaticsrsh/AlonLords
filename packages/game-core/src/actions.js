@@ -151,10 +151,17 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     const damage = action.effectKind === 'damage' ? calculateDamage(action, resolution.amount * (1 + loneDuelBonus), attacker, target, rng) : null;
     const finalDamage = damage?.amount ?? 0;
     const redirectedDamage = finalDamage * redirectPct;
+    const arthurLevel = attacker?.lord?.id === 'empire_lord_arthur' ? attacker.lord.level ?? 1 : null;
+    const attackerHpPct = attacker ? attacker.hp / attacker.maxHp : 0;
+    const targetHpPctBefore = target.maxHp ? hpBefore / target.maxHp : 0;
+    const mercyActive = arthurLevel !== null
+      && attackerHpPct > Math.max(0.5, (90 - 2 * arthurLevel) / 100)
+      && targetHpPctBefore < Math.min(0.49, (18 + 1.6 * arthurLevel) / 100);
+    const mercyDamage = mercyActive ? finalDamage * ((15 + 2 * arthurLevel) / 100) : 0;
     const isRevive = action.targetRule.selection === 'corpse_of_dead_ally' && action.effectKind === 'heal';
     const blockedRevive = effectsBefore.some((effect) => effect.id === 'no_resurrection');
     const hpAfter = action.effectKind === 'damage'
-      ? Math.max(0, hpBefore - finalDamage + redirectedDamage)
+      ? Math.max(0, hpBefore - finalDamage - mercyDamage + redirectedDamage)
       : isRevive && !blockedRevive
         ? Math.min(target.maxHp, resolution.amount)
       : action.effectKind === 'heal'
@@ -209,20 +216,21 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     if (attacker && healedAttacker) attacker.hp += healedAttacker;
     if (effect) target.effects = [...(target.effects ?? effectsBefore), effect];
     if (damage?.critical && action.executeOnCritBelowHpPct && target.hp / target.maxHp <= action.executeOnCritBelowHpPct) target.hp = 0;
-    return { targetId: target.id, hpBefore, hpAfter: target.hp, effect, guardianId: guardian?.id ?? null, redirectedDamage, damage: finalDamage, critical: damage?.critical ?? false, reflectedDamage, counterDamage: counter?.amount ?? 0, counterHealing, healedAttacker, manaBurn, revived: isRevive && !blockedRevive, repositioned: action.effectKind === 'reposition' };
+    if (mercyActive && target.hp / target.maxHp < Math.min(0.19, (6 + 0.7 * arthurLevel) / 100)) target.hp = 0;
+    return { targetId: target.id, hpBefore, hpAfter: target.hp, effect, guardianId: guardian?.id ?? null, redirectedDamage, damage: finalDamage, mercyDamage, critical: damage?.critical ?? false, reflectedDamage, counterDamage: counter?.amount ?? 0, counterHealing, healedAttacker, manaBurn, revived: isRevive && !blockedRevive, repositioned: action.effectKind === 'reposition' };
   });
 
   return { ...resolution, changes };
 }
 
-export function isActionUsable(action, unit) {
+export function isActionUsable(action, unit, resource = unit) {
   const cooldown = unit.cooldowns?.[action.id] ?? 0;
   const uses = unit.actionUses?.[action.id] ?? 0;
-  return cooldown <= 0 && (action.usesPerBattle === undefined || uses < action.usesPerBattle) && (unit.mana ?? Infinity) >= (action.manaCost ?? 0);
+  return cooldown <= 0 && (action.usesPerBattle === undefined || uses < action.usesPerBattle) && (resource.mana ?? Infinity) >= (action.manaCost ?? 0);
 }
 
-export function selectAutomaticAction(unit, allies = [], enemies = []) {
-  const actions = (unit.actions ?? []).filter((action) => isActionUsable(action, unit)).filter((action) => {
+export function selectAutomaticAction(unit, allies = [], enemies = [], resource = unit) {
+  const actions = (unit.actions ?? []).filter((action) => isActionUsable(action, unit, resource)).filter((action) => {
     if (!action.condition) return true;
     const candidates = action.targetRule.side === 'ally' ? allies : enemies;
     return candidates.some((target) => {
@@ -251,7 +259,7 @@ export function beginTurn(unit) {
   return {
     ...unit,
     hp: Math.min(unit.maxHp ?? Infinity, Math.max(0, unit.hp - dotDamage) + (unit.maxHp ?? 0) * (unit.steadyRegenPct ?? 0)),
-    mana: Math.min(unit.manaMax ?? 0, (unit.mana ?? 0) + (unit.manaRegen ?? 0)),
+    ...(unit.mana === undefined ? {} : { mana: Math.min(unit.manaMax ?? 0, unit.mana + (unit.manaRegen ?? 0)) }),
     cooldowns,
     effects: activeEffects
   };
@@ -260,7 +268,7 @@ export function beginTurn(unit) {
 export function spendActionResources(unit, action) {
   return {
     ...unit,
-    mana: (unit.mana ?? 0) - (action.manaCost ?? 0),
+    ...(unit.mana === undefined ? {} : { mana: unit.mana - (action.manaCost ?? 0) }),
     cooldowns: typeof action.cooldown === 'number'
       ? { ...(unit.cooldowns ?? {}), [action.id]: action.cooldown }
       : unit.cooldowns ?? {},
@@ -268,4 +276,12 @@ export function spendActionResources(unit, action) {
       ? unit.actionUses ?? {}
       : { ...(unit.actionUses ?? {}), [action.id]: (unit.actionUses?.[action.id] ?? 0) + 1 }
   };
+}
+
+export function spendCrystalResources(crystal, action) {
+  return { ...crystal, mana: Math.max(0, crystal.mana - (action.manaCost ?? 0)) };
+}
+
+export function regenerateCrystal(crystal) {
+  return { ...crystal, mana: Math.min(crystal.manaMax, crystal.mana + crystal.manaRegen / 5) };
 }

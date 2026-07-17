@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, getAccessibleTargets, getEmpireUnit, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, simulateBattle, simulateBattleSeries, spendActionResources } from '../src/index.js';
+import { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, simulateBattle, simulateBattleSeries, spendActionResources } from '../src/index.js';
 
 const allies = [
   { id: 'guard', maxHp: 24, attack: 7, critChance: 0.2 }
@@ -317,5 +317,26 @@ describe('run loop', () => {
     const recruited = recruitUnit(createRun(), 'empire_archer_t1');
     const defeatedArmy = { ...recruited, army: recruited.army.map((member) => ({ ...member, hp: 0 })) };
     expect(choosePath(defeatedArmy, createPaths(1)[0])).toEqual(defeatedArmy);
+  });
+
+  it('uses selected lord statistics and a shared crystal for skills', () => {
+    const henrik = getEmpireLord('empire_lord_henrik');
+    expect(getBattleLordStats(henrik).battlePower).toBeCloseTo(2.1);
+    expect(createRun({ lordId: 'empire_lord_arthur' })).toMatchObject({ lordId: 'empire_lord_arthur', economicLimit: 12 });
+
+    const spell = { id: 'spell', type: 'holy', effectKind: 'heal', rangeType: 'ranged', formula: { base: 1, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'ally', selection: 'lowest_hp', count: 1 }, manaCost: 10 };
+    const caster = { id: 'caster', hp: 10, maxHp: 10, actions: [spell] };
+    const battle = simulateBattle({ allies: [caster], enemies: [{ id: 'enemy', maxHp: 20, attack: 0 }], lord: { ...henrik, crystalVolume: 10, crystalRegenSpeed: 0 }, maxRounds: 1 });
+    expect(battle.allyCrystal.mana).toBe(0);
+    expect(battle.allies[0]).not.toHaveProperty('mana');
+  });
+
+  it('applies Arthur’s Mercy Strike to a wounded target', () => {
+    const action = { id: 'hit', type: 'physical', effectKind: 'damage', formula: { base: 10, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const attacker = { id: 'ally', hp: 100, maxHp: 100, lord: getEmpireLord('empire_lord_arthur') };
+    const target = { id: 'enemy', hp: 15, maxHp: 100 };
+    const result = applyActionEffect(action, {}, [target], () => 1, attacker);
+    expect(result.changes[0]).toMatchObject({ hpAfter: 0 });
+    expect(result.changes[0].mercyDamage).toBeCloseTo(1.7);
   });
 });

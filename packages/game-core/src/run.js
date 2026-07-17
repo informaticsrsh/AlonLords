@@ -1,13 +1,15 @@
 import { getEmpireUnit } from './catalog.js';
+import { getEmpireLord } from './lords.js';
 
-export function createRun({ lordId = 'henry', seed = 1 } = {}) {
+export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
+  const lord = getEmpireLord(lordId) ?? getEmpireLord('empire_lord_henrik');
   return {
-    lordId,
+    lordId: lord.id,
     seed,
     lives: 3,
     gold: 20,
     difficulty: 1,
-    economicLimit: 12,
+    economicLimit: lord.leadership,
     mines: 0,
     army: [],
     nextUnitNumber: 1,
