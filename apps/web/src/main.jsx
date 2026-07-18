@@ -4,8 +4,6 @@ import { createRoot } from 'react-dom/client';
 import { choosePath, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
-const allies = [{ id: 'imperial-guard', name: 'Імперський страж', maxHp: 30, attack: 8, critChance: 0.15 }];
-const enemies = [{ id: 'raider', name: 'Прикордонний рейдер', maxHp: 24, attack: 6, critChance: 0.1 }];
 const roster = empireUnits.filter((unit) => unit.tier === 1);
 const runStorageKey = 'empire-lords.run.v1';
 const factions = [{
@@ -16,6 +14,53 @@ const factions = [{
   description: 'Починає кожен бій з 50 Віри. Віра зростає за знищення ворогів та зменшується від втрат союзників.',
   mechanic: 'Висока Віра прискорює дії армії, низька — сповільнює. Лорди Імперії по-своєму змінюють цю механіку.'
 }];
+
+function formatStat(value) {
+  return Number.isInteger(value) ? value : Number(value.toFixed(1));
+}
+
+function getActionValue(action, lord) {
+  if (!action.formula) return null;
+  const { base = 0, lordStat, multiplier = 0, resultMultiplier = 1 } = action.formula;
+  return (base + (lord?.[lordStat] ?? 0) * multiplier) * resultMultiplier;
+}
+
+function LordCrystalStats({ lord, className = '' }) {
+  return <dl className={`crystal-stats ${className}`}>
+    <div><dt>{'\u0421\u0438\u043b\u0430 \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u0443'}</dt><dd>{lord.crystalVolume}</dd></div>
+    <div><dt>{'\u0420\u0435\u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0456\u044f \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u0443'}</dt><dd>+{lord.crystalRegenSpeed / 5} {'/ \u0445\u0456\u0434'}</dd></div>
+  </dl>;
+}
+
+function UnitDetails({ unit, lord, onClose }) {
+  const instance = createUnitInstance(unit, getBattleLordStats(lord));
+  return <article className="unit-details" aria-live="polite">
+    <div className="unit-details-heading">
+      <div><p className="eyebrow">{'\u0414\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}</p><h3>{unit.name}</h3></div>
+      <button className="details-close" onClick={onClose} aria-label={'\u0417\u0430\u043a\u0440\u0438\u0442\u0438 \u0434\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}>×</button>
+    </div>
+    <dl className="unit-stats">
+      <div><dt>{'\u0417\u0434\u043e\u0440\u043e\u0432\u2019\u044f'}</dt><dd>{formatStat(instance.maxHp)}</dd></div>
+      <div><dt>{'\u0428\u0432\u0438\u0434\u043a\u0456\u0441\u0442\u044c \u0430\u0442\u0430\u043a\u0438'}</dt><dd>{unit.combat.attackSpeed}</dd></div>
+      <div><dt>{'\u041b\u0456\u0434\u0435\u0440\u0441\u0442\u0432\u043e'}</dt><dd>{unit.combat.leadershipCost}</dd></div>
+      <div><dt>{'\u0420\u043e\u043b\u044c'}</dt><dd>{unit.role}</dd></div>
+      <div><dt>{'\u0420\u043e\u0437\u043c\u0456\u0440'}</dt><dd>{unit.gridFootprint.rows}×{unit.gridFootprint.columns}</dd></div>
+    </dl>
+    <section className="unit-details-section">
+      <h4>{'\u0423\u043c\u0456\u043d\u043d\u044f'}</h4>
+      <div className="unit-abilities">
+        {unit.combat.actions.map((action) => {
+          const value = getActionValue(action, lord);
+          return <div key={action.id}><b>{action.name}</b><span>{action.effectKind} · {action.rangeType}</span><small>{value !== null && action.effectKind === 'damage' ? `${'\u0428\u043a\u043e\u0434\u0430'}: ${formatStat(value)}` : '\u0411\u0435\u0437 \u043f\u0440\u044f\u043c\u043e\u0457 \u0448\u043a\u043e\u0434\u0438'}{action.manaCost ? ` · ${action.manaCost} \u0441\u0438\u043b\u0438 \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u0430` : ''}{action.cooldown ? ` · \u0412\u0456\u0434\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044f: ${action.cooldown} \u0445\u043e\u0434\u0438` : ''}</small></div>;
+        })}
+      </div>
+    </section>
+    {(unit.combat.passives ?? []).length > 0 && <section className="unit-details-section">
+      <h4>{'\u041f\u0430\u0441\u0438\u0432\u043d\u0456 \u0437\u0434\u0456\u0431\u043d\u043e\u0441\u0442\u0456'}</h4>
+      <ul>{unit.combat.passives.map((passive) => <li key={passive.id}><b>{passive.id}</b>{passive.effect ? ` — ${passive.effect}` : ''}{passive.trigger ? ` (${passive.trigger})` : ''}</li>)}</ul>
+    </section>}
+  </article>;
+}
 
 function describeBattleEvent(event) {
   if (event.type === 'death') return `${event.unitId} вибуває з бою`;
@@ -104,7 +149,6 @@ function gridFromRun(run) {
 }
 
 function App() {
-  const result = simulateBattle({ allies, enemies, seed: 42 });
   const [run, setRun] = useState(loadRun);
   const [grid, setGrid] = useState(() => gridFromRun(run));
   const [selectedMemberId, setSelectedMemberId] = useState(null);
@@ -114,6 +158,7 @@ function App() {
   const [selectedLordId, setSelectedLordId] = useState('empire_lord_henrik');
   const [selectedFactionId, setSelectedFactionId] = useState('empire');
   const [hubView, setHubView] = useState('hub');
+  const [selectedRecruitUnitId, setSelectedRecruitUnitId] = useState('');
   const [battlePlayback, setBattlePlayback] = useState(null);
   const paths = createPaths(run.difficulty);
   const lord = getEmpireLord(run.lordId);
@@ -227,6 +272,7 @@ function App() {
             {availableLords.map((candidate) => <button className={`lord-gallery-card ${candidate.id === selectedLordId ? 'selected' : ''}`} key={candidate.id} onClick={() => setSelectedLordId(candidate.id)}><span className="mini-portrait">{candidate.name[0]}</span><span><b>{candidate.name}</b><small>{candidate.description}</small></span></button>)}
           </div>
           <article className="lord-detail">
+            <LordCrystalStats lord={selectedLord} className="lord-selector-crystal-stats" />
             <div className="lord-portrait" aria-label={`Портрет ${selectedLord.name}`}>{selectedLord.name[0]}</div>
             <div><p className="eyebrow">Лорд Імперії</p><h2>{selectedLord.name}</h2><p>{selectedLord.description}</p><dl className="lord-stats"><div><dt>Бойова сила</dt><dd>{selectedLord.battlePower}</dd></div><div><dt>Витривалість</dt><dd>{selectedLord.vitality}</dd></div><div><dt>Лідерство</dt><dd>{selectedLord.leadership}</dd></div><div><dt>Кристал</dt><dd>{selectedLord.crystalVolume}</dd></div></dl><section className="lord-skill"><b>{selectedLord.id === 'empire_lord_arthur' ? 'Удар милосердя' : 'Посилена Віра'}</b><p>{selectedLord.id === 'empire_lord_arthur' ? 'Здорові союзники завдають додаткової шкоди пораненим ворогам і добивають їх на низькому HP.' : 'Віра за знищених ворогів зростає швидше, а втрата Віри від союзників менша.'}</p></section><button className="menu-primary" onClick={startNewRun}>Обрати лорда й почати</button></div>
           </article>
@@ -241,18 +287,10 @@ function App() {
       <p className="eyebrow">Кампанія · забіг</p>
       <h1>Empire Lords</h1>
       <p className="lead">Детермінований автобій: той самий seed завжди дає той самий результат.</p>
-      <section className="arena" aria-label="Результат тестового бою">
-        <article><h2>{allies[0].name}</h2><p>HP {allies[0].maxHp} · ATK {allies[0].attack}</p></article>
-        <strong>VS</strong>
-        <article><h2>{enemies[0].name}</h2><p>HP {enemies[0].maxHp} · ATK {enemies[0].attack}</p></article>
-      </section>
-      <section className="result">
-        <h2>Переможець: {result.winner === 'ally' ? 'Імперія' : 'Рейдери'}</h2>
-        <p>Раундів: {result.round} · Подій: {result.events.length} · Seed: 42</p>
-      </section>
       <section className="deployment hub">
         <h2>{run.phase === 'hub' ? 'Hub — підготовка' : run.phase === 'battle' ? 'Обраний шлях' : 'Забіг завершено'}</h2>
         <section className="lord-panel">
+          <LordCrystalStats lord={lord} />
           <div><b>Лорд: {lord.name}</b><span>Рівень {lord.level} · Бойова сила {lord.battlePower} · Витривалість {lord.vitality} · Тактика {lord.tactics}</span></div>
           <div><b>Кристал лорда</b><span>{lord.crystalVolume} сили · +{lord.crystalRegenSpeed / 5} за тік</span></div>
           <div><b>Віра Імперії</b><span>Стартує з 50, зростає за перемоги й падає за втрати.</span></div>
@@ -263,6 +301,14 @@ function App() {
           <h3>1. Зберіть армію</h3>
           <p>Натисніть картку юніта, щоб найняти його. Вартість у дужках — лідерство.</p>
           <div className="roster">
+            <label className="recruit-details-picker">
+              <span>{'\u041f\u0435\u0440\u0435\u0433\u043b\u044f\u043d\u0443\u0442\u0438 \u0434\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}</span>
+              <select value={selectedRecruitUnitId} onChange={(event) => setSelectedRecruitUnitId(event.target.value)}>
+                <option value="">{'\u041e\u0431\u0440\u0430\u0442\u0438 \u044e\u043d\u0456\u0442\u0430'}</option>
+                {roster.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+              </select>
+            </label>
+            {selectedRecruitUnitId && <UnitDetails unit={getEmpireUnit(selectedRecruitUnitId)} lord={lord} onClose={() => setSelectedRecruitUnitId('')} />}
             {roster.map((unit) => <button className="recruit-card" key={unit.id} onClick={() => setRun((current) => recruitUnit(current, unit.id))}><b>{unit.name}</b><span>{unit.role} · {unit.combat.leadershipCost} лідерства</span><small>Найняти</small></button>)}
           </div>
           <p className="army-summary">Ваша армія: {run.army.length ? run.army.map((member) => getEmpireUnit(member.unitId).name).join(', ') : 'ще порожня — найміть хоча б одного юніта.'}</p>
