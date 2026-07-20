@@ -142,6 +142,31 @@ describe('Empire unit catalog', () => {
     expect(getAccessibleTargets(targets, attacker, 'ranged')).toHaveLength(3);
   });
 
+  it('prioritizes opposing cells before expanding across each enemy row for melee attacks', () => {
+    const attacker = { position: { row: 2, column: 1 } };
+    const targets = [
+      { id: 'front-far', hp: 10, position: { row: 0, column: 4 } },
+      { id: 'second-row-opposite', hp: 10, position: { row: 1, column: 1 } }
+    ];
+
+    expect(getAccessibleTargets(targets, attacker, 'melee').map((unit) => unit.id)).toEqual(['front-far']);
+
+    targets[0].hp = 0;
+    expect(getAccessibleTargets(targets, attacker, 'melee').map((unit) => unit.id)).toEqual(['second-row-opposite']);
+  });
+
+  it('limits the initial melee zone to two cells when opposing formations have different parity', () => {
+    const attacker = { position: { row: 2, column: 2 }, formationColumns: 5 };
+    const targets = [
+      { id: 'left-neighbor', hp: 10, position: { row: 0, column: 1 }, formationColumns: 6 },
+      { id: 'left-opposing', hp: 10, position: { row: 0, column: 2 }, formationColumns: 6 },
+      { id: 'right-opposing', hp: 10, position: { row: 0, column: 3 }, formationColumns: 6 },
+      { id: 'right-neighbor', hp: 10, position: { row: 0, column: 4 }, formationColumns: 6 }
+    ];
+
+    expect(getAccessibleTargets(targets, attacker, 'melee').map((unit) => unit.id)).toEqual(['left-opposing', 'right-opposing']);
+  });
+
   it('regenerates mana and respects action cooldowns', () => {
     const action = { id: 'spell', manaCost: 20, cooldown: 2 };
     const unit = { mana: 30, manaMax: 50, manaRegen: 5, cooldowns: {} };
@@ -346,10 +371,16 @@ describe('run loop', () => {
 
     expect(safe).toEqual(generateEnemyArmy({ pathId: 'safe', difficulty: 1, seed: 42 }));
     expect(safe.leadershipBudget).toBe(4);
-    expect(safe.leadershipUsed).toBeLessThanOrEqual(4);
-    expect(safe.units).toHaveLength(2);
+    expect(safe.leadershipUsed).toBe(4);
     expect(risky.leadershipBudget).toBe(18);
-    expect(risky.leadershipUsed).toBeLessThanOrEqual(risky.leadershipBudget);
+    expect(risky.leadershipUsed).toBe(risky.leadershipBudget);
+    const repeats = risky.units.reduce((counts, unit) => counts.set(unit.unitId, (counts.get(unit.unitId) ?? 0) + 1), new Map());
+    expect(Math.max(...repeats.values())).toBeLessThanOrEqual(2);
     expect(new Set(risky.units.map((unit) => `${unit.position.row}:${unit.position.column}`)).size).toBe(risky.units.length);
+
+    const compositions = new Set(Array.from({ length: 10 }, (_, seed) => (
+      generateEnemyArmy({ pathId: 'risky', difficulty: 3, seed }).units.map((unit) => unit.unitId).sort().join(',')
+    )));
+    expect(compositions.size).toBeGreaterThan(1);
   });
 });

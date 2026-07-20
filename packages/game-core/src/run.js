@@ -15,6 +15,47 @@ function createEnemyRng(seed) {
   };
 }
 
+function shuffleEnemyCandidates(candidates, rng) {
+  const shuffled = [...candidates];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(rng() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
+function createEnemyCompositions(candidates, leadershipBudget, maxUnits, limit = 128) {
+  const compositions = [];
+  const copies = new Map();
+
+  function collect(startIndex, spent, units) {
+    if (compositions.length >= limit || units.length >= maxUnits) return;
+    for (let index = startIndex; index < candidates.length; index += 1) {
+      const unit = candidates[index];
+      const cost = unit.combat.leadershipCost;
+      const nextSpent = spent + cost;
+      if (nextSpent > leadershipBudget || (copies.get(unit.id) ?? 0) >= 2) continue;
+
+      const nextUnits = [...units, unit];
+      if (nextSpent === leadershipBudget) {
+        compositions.push(nextUnits);
+        if (compositions.length >= limit) return;
+        continue;
+      }
+
+      copies.set(unit.id, (copies.get(unit.id) ?? 0) + 1);
+      collect(index, nextSpent, nextUnits);
+      const remainingCopies = copies.get(unit.id) - 1;
+      if (remainingCopies === 0) copies.delete(unit.id);
+      else copies.set(unit.id, remainingCopies);
+      if (compositions.length >= limit) return;
+    }
+  }
+
+  collect(0, 0, []);
+  return compositions;
+}
+
 function fitsEnemyPlacement(occupied, footprint, position) {
   if (position.row + footprint.rows > 3 || position.column + footprint.columns > 5) return false;
   for (let row = position.row; row < position.row + footprint.rows; row += 1) {
@@ -40,6 +81,11 @@ function placeEnemyUnit(unit, occupied) {
   return null;
 }
 
+function canPlaceEnemyComposition(composition) {
+  const occupied = new Set();
+  return composition.every((unit) => placeEnemyUnit(unit, occupied));
+}
+
 /** Створює армію Імперії без бонусів лорда для одного зі шляхів. */
 export function generateEnemyArmy({ pathId, difficulty = 1, seed = 1 }) {
   const profile = enemyProfiles[pathId] ?? enemyProfiles.safe;
@@ -51,23 +97,14 @@ export function generateEnemyArmy({ pathId, difficulty = 1, seed = 1 }) {
       const units = getEmpireUnitsByTier(tier);
       return units;
     });
-  const army = [];
-  let usedLeadership = 0;
-  let attempts = 0;
-  while (army.length < profile.maxUnits && attempts < 100) {
-    attempts += 1;
-    const score = (unit) => unit.combat.leadershipCost * unit.tier;
-    const minScore = Math.min(...candidates.map(score));
-    const slotsAfterPick = profile.maxUnits - army.length - 1;
-    const affordable = candidates.filter((unit) => usedLeadership + score(unit) + minScore * slotsAfterPick <= leadershipBudget);
-    if (!affordable.length) break;
-    const unit = affordable[Math.floor(rng() * affordable.length)];
-    army.push({ ...unit, id: `enemy-${unit.id}-${army.length + 1}`, unitId: unit.id });
-    usedLeadership += score(unit);
-  }
+  const compositions = createEnemyCompositions(shuffleEnemyCandidates(candidates, rng), leadershipBudget, profile.maxUnits)
+    .filter(canPlaceEnemyComposition);
+  const selectedComposition = compositions[Math.floor(rng() * compositions.length)] ?? [];
+  const army = selectedComposition.map((unit, index) => ({ ...unit, id: `enemy-${unit.id}-${index + 1}`, unitId: unit.id }));
   const occupied = new Set();
   const units = army.map((unit) => ({ ...unit, position: placeEnemyUnit(unit, occupied) })).filter((unit) => unit.position);
-  return { label: profile.label, leadershipBudget, leadershipUsed: usedLeadership, units };
+  const leadershipUsed = units.reduce((total, unit) => total + unit.combat.leadershipCost, 0);
+  return { label: profile.label, leadershipBudget, leadershipUsed, units };
 }
 
 function getEmpireUnitsByTier(tier) {

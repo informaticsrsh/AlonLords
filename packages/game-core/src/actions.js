@@ -6,6 +6,14 @@ function distanceByColumns(left, right) {
   return Math.abs(left.position.column - right.position.column);
 }
 
+function opposingColumnDistance(target, attacker) {
+  const attackerColumns = attacker.formationColumns;
+  const targetColumns = target.formationColumns;
+  if (!Number.isInteger(attackerColumns) || !Number.isInteger(targetColumns)) return distanceByColumns(target, attacker);
+  const targetCenter = attacker.position.column + (targetColumns - attackerColumns) / 2;
+  return Math.abs(target.position.column - targetCenter);
+}
+
 function gridDistance(left, right) {
   return Math.abs(left.position.row - right.position.row) + Math.abs(left.position.column - right.position.column);
 }
@@ -41,8 +49,27 @@ export function getAccessibleTargets(candidates, attacker, rangeType) {
   const living = candidates.filter((unit) => unit.hp > 0);
   if (rangeType !== 'melee' || !attacker?.position || living.some((unit) => !unit.position)) return living;
 
-  const frontlineRow = Math.min(...living.map((unit) => unit.position.row));
-  return living.filter((unit) => unit.position.row === frontlineRow && distanceByColumns(unit, attacker) <= 1);
+  const rows = [...new Set(living.map((unit) => unit.position.row))].sort((a, b) => a - b);
+  for (const row of rows) {
+    const rowTargets = living.filter((unit) => unit.position.row === row);
+    const hasOffsetCenter = Number.isInteger(attacker.formationColumns)
+      && Number.isInteger(rowTargets[0]?.formationColumns)
+      && (attacker.formationColumns - rowTargets[0].formationColumns) % 2 !== 0;
+    const opposingTargets = rowTargets.filter((unit) => hasOffsetCenter
+      ? opposingColumnDistance(unit, attacker) === 0.5
+      : opposingColumnDistance(unit, attacker) <= 1);
+
+    // In each enemy row, melee units first attack the unit directly opposite
+    // them and its two horizontal neighbours. If formations have different
+    // parity, the opposing point falls between two cells, so only those two
+    // cells are accessible. Only when that area is empty do they expand to the
+    // remaining units in that row. The next row is checked only after the
+    // current row has no living enemies.
+    if (opposingTargets.length) return opposingTargets;
+    if (rowTargets.length) return rowTargets;
+  }
+
+  return [];
 }
 
 export function findGuardian(target, allies) {

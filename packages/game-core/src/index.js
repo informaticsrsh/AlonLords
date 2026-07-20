@@ -89,11 +89,11 @@ function firstLiving(units) {
  * Мінімальний детермінований автобій для вертикального зрізу.
  * Кожен живий юніт атакує першого живого суперника за порядком у складі.
  */
-export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_lord_henrik'), seed = 1, maxRounds = 50 }) {
+export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_lord_henrik'), seed = 1, maxRounds = 50, allyFormationColumns, enemyFormationColumns }) {
   const rng = createRng(seed);
   const battleLord = getBattleLordStats(lord);
-  const initialAllies = allies.map((unit) => ({ ...cloneUnit(unit), lord: unit.lord ?? battleLord }));
-  const initialEnemies = enemies.map(cloneUnit);
+  const initialAllies = allies.map((unit) => ({ ...cloneUnit(unit), lord: unit.lord ?? battleLord, formationColumns: unit.formationColumns ?? allyFormationColumns }));
+  const initialEnemies = enemies.map((unit) => ({ ...cloneUnit(unit), formationColumns: unit.formationColumns ?? enemyFormationColumns }));
   const alliedAuras = applyBattleAuras(initialAllies, initialEnemies);
   const enemyAuras = applyBattleAuras(alliedAuras.enemies, alliedAuras.units);
   const state = {

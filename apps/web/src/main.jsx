@@ -248,10 +248,8 @@ function App() {
       <button className="menu-button" onClick={() => setShowSettings((value) => !value)}>Налаштування</button>
       {showSettings && <div className="settings-panel">
         <p><b>Seed поточного забігу:</b> {run.seed}</p>
-        <p>Режим «Кампанія» доступний зараз. Інші режими буде додано пізніше.</p>
       </div>}
     </section>
-    <p className="menu-note">Порядок гри: вибір армії → розстановка → маршрут → бій.</p>
   </main>;
 
   if (screen === 'faction') {
@@ -282,20 +280,29 @@ function App() {
   }
 
   return (
-    <main>
-      <button className="back-menu" onClick={() => setScreen('menu')}>← Головне меню</button>
-      <p className="eyebrow">Кампанія · забіг</p>
-      <h1>Empire Lords</h1>
-      <p className="lead">Детермінований автобій: той самий seed завжди дає той самий результат.</p>
+    <main className="campaign-page">
+      <header className="campaign-header">
+        <div className="campaign-title"><p className="eyebrow">Кампанія · забіг</p><h1>Empire Lords</h1><span>Детермінований автобій · Seed {run.seed}</span></div>
+        <button className="back-menu" onClick={() => setScreen('menu')}>← До головного меню</button>
+      </header>
+      <nav className="campaign-steps" aria-label="Прогрес забігу">
+        <span className={run.phase === 'hub' && hubView === 'hub' ? 'active' : ''}><b>1</b> Армія</span>
+        <span className={hubView === 'opponents' ? 'active' : ''}><b>2</b> Розстановка</span>
+        <span className={run.phase === 'battle' ? 'active' : ''}><b>3</b> Бій</span>
+      </nav>
       <section className="deployment hub">
-        <h2>{run.phase === 'hub' ? 'Hub — підготовка' : run.phase === 'battle' ? 'Обраний шлях' : 'Забіг завершено'}</h2>
+        <h2>{run.phase === 'hub' ? 'Підготовка до бою' : run.phase === 'battle' ? 'Обраний шлях' : 'Забіг завершено'}</h2>
         <section className="lord-panel">
           <LordCrystalStats lord={lord} />
           <div><b>Лорд: {lord.name}</b><span>Рівень {lord.level} · Бойова сила {lord.battlePower} · Витривалість {lord.vitality} · Тактика {lord.tactics}</span></div>
-          <div><b>Кристал лорда</b><span>{lord.crystalVolume} сили · +{lord.crystalRegenSpeed / 5} за тік</span></div>
-          <div><b>Віра Імперії</b><span>Стартує з 50, зростає за перемоги й падає за втрати.</span></div>
         </section>
-        <p>Життя: {run.lives} · Золото: {run.gold} · Рудники: {run.mines} (+{run.mines} золота за перемогу) · Лідерство: {leadershipUsed}/{run.economicLimit} · Складність: {run.difficulty}</p>
+        <div className="resource-strip" aria-label="Ресурси забігу">
+          <span><small>Життя</small><b>{run.lives}</b></span>
+          <span><small>Золото</small><b>{run.gold}</b></span>
+          <span><small>Рудники</small><b>{run.mines} <i>+{run.mines}/перемога</i></b></span>
+          <span><small>Лідерство</small><b>{leadershipUsed}/{run.economicLimit}</b></span>
+          <span><small>Складність</small><b>{run.difficulty}</b></span>
+        </div>
         {run.phase === 'hub' && <>
           {hubView === 'hub' && <>
           <h3>1. Зберіть армію</h3>
@@ -309,7 +316,7 @@ function App() {
               </select>
             </label>
             {selectedRecruitUnitId && <UnitDetails unit={getEmpireUnit(selectedRecruitUnitId)} lord={lord} onClose={() => setSelectedRecruitUnitId('')} />}
-            {roster.map((unit) => <button className="recruit-card" key={unit.id} onClick={() => setRun((current) => recruitUnit(current, unit.id))}><b>{unit.name}</b><span>{unit.role} · {unit.combat.leadershipCost} лідерства</span><small>Найняти</small></button>)}
+            {roster.map((unit) => <button className="recruit-card" key={unit.id} onClick={() => setRun((current) => recruitUnit(current, unit.id))}><b>{unit.name}</b><span>{unit.role}</span><small>{unit.combat.leadershipCost} лідерства · Найняти →</small></button>)}
           </div>
           <p className="army-summary">Ваша армія: {run.army.length ? run.army.map((member) => getEmpireUnit(member.unitId).name).join(', ') : 'ще порожня — найміть хоча б одного юніта.'}</p>
           <div className="army-actions">
@@ -317,7 +324,7 @@ function App() {
               const unit = getEmpireUnit(member.unitId);
               const maxHp = createUnitInstance(unit, getBattleLordStats(lord)).maxHp;
               return <div className="member-actions" key={member.instanceId}>
-                <strong>{unit.name}</strong> · HP {member.hp ?? maxHp}/{maxHp} · EXP {member.exp}
+                <div className="member-heading"><strong>{unit.name}</strong><span>HP {member.hp ?? maxHp}/{maxHp} · EXP {member.exp}</span></div>
                 <div className="tactics">
                   <label>Дія
                     <select value={member.tactics?.actionPriority ?? ''} onChange={(event) => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: { ...member.tactics, actionPriority: event.target.value || undefined } }))}>
@@ -365,7 +372,7 @@ function App() {
           <div className="roster">
             {paths.map((path) => {
               const enemyArmy = generateEnemyArmy({ pathId: path.id, difficulty: run.difficulty, seed: formationSeed(run, path) });
-              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name} · {enemyArmy.label}</b><span>Лідерство ворога: {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>{path.goldReward} золота · загроза {path.threat}</em></button>;
+              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {path.goldReward} золота · загроза {path.threat} →</em></button>;
             })}
           </div>
           <button className="reset-button" onClick={() => setHubView('hub')}>← Повернутися до Hub</button>
