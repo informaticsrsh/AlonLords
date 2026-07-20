@@ -6,9 +6,10 @@ import './styles.css';
 
 const roster = empireUnits.filter((unit) => unit.tier === 1);
 const runStorageKey = 'empire-lords.run.v1';
+const artUrl = (file) => `${import.meta.env.BASE_URL}art/${file}`;
 const lordPortraits = {
-  empire_lord_henrik: '/art/lord-henrik.png',
-  empire_lord_arthur: '/art/lord-arthur.png'
+  empire_lord_henrik: artUrl('lord-henrik.png'),
+  empire_lord_arthur: artUrl('lord-arthur.png')
 };
 const unitPortraitPositions = {
   empire_archer_t1: '0% 0%', empire_infantry_t1: '33.333% 0%', empire_priest_t1: '66.667% 0%', empire_silent_t1: '100% 0%',
@@ -16,7 +17,7 @@ const unitPortraitPositions = {
 };
 
 function UnitPortrait({ unitId, className = '' }) {
-  return <span className={`unit-portrait ${className}`} aria-hidden="true" style={{ backgroundPosition: unitPortraitPositions[unitId] ?? '100% 100%' }} />;
+  return <span className={`unit-portrait ${className}`} aria-hidden="true" style={{ backgroundImage: `url(${artUrl('imperial-unit-portraits.png')})`, backgroundPosition: unitPortraitPositions[unitId] ?? '100% 100%' }} />;
 }
 
 function battleEventInfo(event) {
@@ -258,7 +259,7 @@ function App() {
     if (battlePlayback.index >= battlePlayback.battle.events.length) {
       setLastBattle(battlePlayback.report);
       setRun((current) => finishBattle(current, { victory: battlePlayback.victory, army: battlePlayback.updatedArmy }));
-      setHubView('hub');
+      setHubView('results');
       setBattlePlayback(null);
       return undefined;
     }
@@ -320,7 +321,7 @@ function App() {
   return (
     <main className="campaign-page">
       <header className="campaign-header">
-        <div className="campaign-title"><p className="eyebrow">Кампанія · забіг</p><h1>Empire Lords</h1><span>Детермінований автобій · Seed {run.seed}</span></div>
+        <div className="campaign-title"><p className="eyebrow">Кампанія · забіг</p><h1>Воєнна рада</h1><span>Детермінований автобій · Seed {run.seed}</span></div>
         <button className="back-menu" onClick={() => setScreen('menu')}>← До головного меню</button>
       </header>
       <nav className="campaign-steps" aria-label="Прогрес забігу">
@@ -433,7 +434,8 @@ function App() {
           </div>
           <div className={`action-flash ${playbackEvent?.type ?? 'ready'}`}>{playbackEvent?.type === 'heal' ? '✦ Зцілення' : playbackEvent?.type === 'control' ? '⚡ Контроль' : playbackEvent?.type === 'death' ? '☠ Загибель' : '✹ Удар'}</div>
         </section>}
-        {lastBattle && <section className={`battle-report ${lastBattle.victory ? 'victory' : 'defeat'}`} aria-live="polite">
+        {lastBattle && hubView === 'results' && <section className={`battle-report battle-results-screen ${lastBattle.victory ? 'victory' : 'defeat'}`} aria-live="polite">
+          <p className="eyebrow">Підсумок сутички</p>
           <h3>{lastBattle.victory ? 'Перемога' : 'Поразка'} · {lastBattle.rounds} раундів</h3>
           <p className="battle-resources">Віра: {lastBattle.faith}/100 · Сила кристала: {Math.round(lastBattle.crystal.mana)}/{lastBattle.crystal.manaMax}</p>
           {lastBattle.victory && <p>Нагорода: +{lastBattle.path.goldReward} золота{lastBattle.path.expReward ? ` · +${lastBattle.path.expReward} EXP` : ''}{lastBattle.path.economicLimitReward ? ` · +${lastBattle.path.economicLimitReward} ліміту` : ''}{lastBattle.path.mineReward ? ' · новий рудник' : ''}.</p>}
@@ -450,9 +452,10 @@ function App() {
               {lastBattle.events.slice(0, 30).map((event, index) => <li key={`${event.round}-${index}`}><b>Р{event.round}.</b> {describeBattleEvent(event)}</li>)}
             </ol>
           </details>
+          <button className="battle-button results-continue" onClick={() => { setLastBattle(null); setHubView('hub'); }}>Продовжити похід →</button>
         </section>}
         {run.phase === 'game_over' && <button className="battle-button" onClick={() => setRun(createRun())}>Почати новий забіг</button>}
-        {run.phase === 'hub' && <button className="reset-button" onClick={() => setRun(createRun())}>Скинути забіг</button>}
+        {run.phase === 'hub' && hubView !== 'results' && <button className="reset-button" onClick={() => setRun(createRun())}>Скинути забіг</button>}
       </section>
     </main>
   );

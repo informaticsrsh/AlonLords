@@ -322,6 +322,11 @@ button { font-weight: 700; }
 .mini-portrait img, .lord-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .mini-portrait img { transform: scale(1.18); }
 .lord-portrait img { transform: scale(1.04); }
+
+/* Faction selection needs a composed game-screen hierarchy, not a splash title. */
+.faction-select { padding-top: 48px; padding-bottom: 56px; }
+.faction-select > h1 { max-width: 760px; margin: 0 auto; font-size: clamp(2.35rem, 5.2vw, 4.25rem); line-height: .98; letter-spacing: -.035em; }
+.faction-select > .eyebrow { margin: 0 0 10px; }
 .lord-stats div, .lord-skill, .lord-selector-crystal-stats div, .resource-strip span, .army-summary, .settings-panel {
   border: 1px solid rgba(196, 214, 255, .22); background: rgba(36, 31, 112, .54);
 }
@@ -425,6 +430,17 @@ button { font-weight: 700; }
   .battlefield { grid-template-columns: 1fr; }.battlefield::before { display: none; }.battlefield-versus { justify-self: center; order: 2; margin: -4px 0; }.formation:last-child { order: 3; }
   .formation-cell { min-height: 88px; }.battle-portrait { height: 48px; }
 }
+
+/* The report is a dedicated transition screen, never part of route selection. */
+.battle-results-screen { width: min(940px, 100%); margin: 34px auto 0; padding: clamp(22px, 4vw, 42px) !important; border: 2px solid rgba(255, 223, 132, .72) !important; border-radius: 24px !important; background:
+  radial-gradient(circle at 50% 0%, rgba(255, 218, 120, .2), transparent 32rem),
+  linear-gradient(145deg, rgba(42, 51, 139, .98), rgba(49, 28, 104, .98)) !important;
+  box-shadow: 0 26px 65px rgba(7, 8, 58, .35), inset 0 1px rgba(255,255,255,.2); text-align: center;
+}
+.battle-results-screen > .eyebrow { margin: 0 0 8px; }.battle-results-screen > h3 { margin: 0; color: #fff4bb; font-size: clamp(2rem, 5vw, 3.4rem); }.battle-results-screen > p { color: #e9efff; }
+.battle-results-screen .battle-resources { display: inline-block; margin: 15px auto 6px; padding: 8px 13px; border: 1px solid rgba(203, 235, 255, .25); border-radius: 99px; background: rgba(10, 15, 68, .33); }
+.battle-results-screen .battle-state { margin: 28px 0 18px; text-align: left; }.battle-results-screen .battle-state > div { padding: 12px; border: 1px solid rgba(216, 232, 255, .2); border-radius: 14px; background: rgba(7, 14, 65, .28); }.battle-results-screen .battle-state h4 { color: #fff0a1; font: 700 1.1rem Georgia, serif; }
+.battle-results-screen .battle-unit { background: rgba(71, 80, 162, .52); }.battle-results-screen .survivors { justify-content: center; }.battle-results-screen .survivors span { color: #f6f8ff; background: rgba(106, 98, 189, .5); }.battle-results-screen details { margin: 20px auto 0; max-width: 640px; text-align: left; }.results-continue { display: inline-block; margin-top: 28px; min-width: 230px; }
 
 /* Event layer: explains each animation directly on the battlefield. */
 .battle-action-banner { display: grid; grid-template-columns: minmax(0, 1fr) 170px minmax(0, 1fr); align-items: center; gap: 10px; max-width: 690px; margin: 0 auto 14px; padding: 8px; border: 1px solid rgba(211, 239, 255, .4); border-radius: 14px; background: rgba(5, 11, 62, .46); animation: battle-banner-in .2s ease both; }
