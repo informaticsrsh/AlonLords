@@ -77,6 +77,17 @@ function formatStat(value) {
   return Number.isInteger(numericValue) ? numericValue : Number(numericValue.toFixed(1));
 }
 
+function formatPathReward(reward) {
+  if (!reward) return 'немає';
+  const labels = {
+    gold: 'золота',
+    lord_experience: 'досвіду лорду',
+    skill_points: 'поінт навички',
+    mines: 'шахта'
+  };
+  return `+${reward.amount} ${labels[reward.type] ?? reward.type}`;
+}
+
 function getActionValue(action, lord) {
   if (!action.formula) return null;
   const { base = 0, lordStat, multiplier = 0, resultMultiplier = 1 } = action.formula;
@@ -511,7 +522,7 @@ function App() {
   const [battlePlayback, setBattlePlayback] = useState(null);
   const [lastReplay, setLastReplay] = useState(null);
   const [showLordDetails, setShowLordDetails] = useState(false);
-  const paths = createPaths(run.difficulty);
+  const paths = createPaths(run.difficulty, run.seed);
   const lord = getRunLord(run);
   const hasBattleReadyUnit = run.army.some((member) => member.hp !== 0);
   const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
@@ -562,7 +573,7 @@ function App() {
       faith: Math.round(battle.battleSpirit),
       crystal: battle.allyCrystal,
       enemyArmy,
-      lordExperienceReward: victory ? run.army.length * (run.selectedPath.expReward ?? 0) : 0
+      lordExperienceReward: victory ? (run.selectedPath.lordExperienceReward ?? 0) + run.army.length * (run.selectedPath.expReward ?? 0) : 0
     };
     const hpByInstance = new Map(battle.allies.map((unit) => [unit.id, unit.hp]));
     const updatedArmy = run.army.map((member) => ({ ...member, hp: hpByInstance.get(member.instanceId) ?? 0 }));
@@ -731,7 +742,7 @@ function App() {
           <div className="roster">
             {paths.map((path) => {
               const enemyArmy = generateEnemyArmy({ pathId: path.id, difficulty: run.difficulty, seed: formationSeed(run, path) });
-              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {path.goldReward} золота · загроза {path.threat} →</em></button>;
+              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {formatPathReward(path.reward)} · загроза {path.threat} →</em></button>;
             })}
           </div>
           <button className="reset-button" onClick={() => setHubView('hub')}>← Повернутися до Hub</button>
@@ -763,7 +774,7 @@ function App() {
           <p className="eyebrow">Підсумок сутички</p>
           <h3>{lastBattle.victory ? 'Перемога' : 'Поразка'} · {lastBattle.rounds} раундів</h3>
           <p className="battle-resources">Віра: {lastBattle.faith}/100 · Сила кристала: {Math.round(lastBattle.crystal.mana)}/{lastBattle.crystal.manaMax}</p>
-          {lastBattle.victory && <p>Нагорода: +{lastBattle.path.goldReward} золота · +{lastBattle.lordExperienceReward} досвіду лорду{lastBattle.path.expReward ? ` · +${lastBattle.path.expReward} EXP війську` : ''}{lastBattle.path.economicLimitReward ? ` · +${lastBattle.path.economicLimitReward} ліміту` : ''}{lastBattle.path.mineReward ? ' · новий рудник' : ''}.</p>}
+          {lastBattle.victory && <p>Нагорода: {formatPathReward(lastBattle.path.reward)}.</p>}
           <div className="battle-state" aria-label="Фінальний стан бою">
             <div><h4>Імперія</h4>{lastBattle.allies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} />)}</div>
             <div><h4>Рейдери</h4>{lastBattle.enemies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} />)}</div>

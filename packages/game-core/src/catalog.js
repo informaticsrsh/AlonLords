@@ -48,6 +48,7 @@ const unitSchema = z.object({
   tier: z.number().int().min(1).max(4),
   role: z.enum(['melee', 'ranged', 'caster']),
   gridFootprint: footprintSchema,
+  positionModifiers: z.array(z.object({ condition: z.string(), effect: z.string() })).default([]),
   combat: combatSchema.optional()
 });
 

@@ -54,6 +54,46 @@ describe('battle grid', () => {
 });
 
 describe('Empire unit catalog', () => {
+  it('loads every documented resistance and positional modifier from the full unit schema', () => {
+    expect(empireUnits).toHaveLength(77);
+    for (const unit of empireUnits) {
+      expect(unit.positionModifiers.length).toBeGreaterThan(0);
+      expect(unit.combat.resistances).toEqual(expect.objectContaining({ physical: expect.any(Number), fire: expect.any(Number), holy: expect.any(Number), poison: expect.any(Number), lightning: expect.any(Number) }));
+    }
+    expect(getEmpireUnit('empire_knight_t4_iron_phalanx').combat.resistances.physical).toBe(20);
+  });
+
+  it('applies positional formula bonuses, native percentage resistances and melee evasion', () => {
+    const strike = { id: 'strike', type: 'physical', effectKind: 'damage', rangeType: 'melee', formula: { base: 10, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const attacker = { id: 'scout', hp: 30, maxHp: 30, position: { row: 1, column: 1 }, positionModifiers: [{ condition: 'no_adjacent_allies', effect: '+20% до formula' }] };
+    const defended = { id: 'defended', hp: 100, maxHp: 100, resistances: { physical: 20 }, position: { row: 0, column: 1 } };
+    const positionedHit = applyActionEffect(strike, {}, [defended], () => 1, attacker, [defended], [attacker]).changes[0];
+    expect(positionedHit.damage).toBeCloseTo(9.6);
+    expect(positionedHit.hpAfter).toBeCloseTo(90.4);
+
+    const evasive = { id: 'evasive', hp: 30, maxHp: 30, passives: [{ id: 'hard_to_hit', effect: 'melee_evasion_bonus:0.15' }] };
+    expect(calculateDamage(strike, 10, {}, evasive, () => 0)).toMatchObject({ amount: 0, evaded: true });
+  });
+
+  it('enforces caster-only conditions, silence immunity, timed resistance debuffs and hit repositioning', () => {
+    const base = { id: 'base', type: 'physical', effectKind: 'damage', rangeType: 'ranged', formula: { base: 1, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const execute = { ...base, id: 'execute', formula: { base: 99, lordStat: 'battlePower', multiplier: 0 }, condition: { targetHasManaAction: true } };
+    const unit = { actions: [execute, base] };
+    expect(selectAutomaticAction(unit, [], [{ id: 'non-caster', hp: 10, maxHp: 10, actions: [base] }]).id).toBe('base');
+    expect(selectAutomaticAction(unit, [], [{ id: 'caster', hp: 10, maxHp: 10, actions: [{ ...base, manaCost: 1 }] }]).id).toBe('execute');
+
+    const immune = { id: 'immune', hp: 10, maxHp: 10, passives: [{ id: 'silent_immunity', effect: 'immune' }] };
+    const silence = { ...base, id: 'silence', effectKind: 'control', control: 'silence', duration: 2 };
+    expect(applyActionEffect(silence, {}, [immune]).changes[0].effect).toBeNull();
+
+    const target = { id: 'target', hp: 30, maxHp: 30, position: { row: 0, column: 0 }, effects: [] };
+    const debuff = { ...base, id: 'interrogate', effectKind: 'debuff', effect: '-30% усі resistances на 2 ходи' };
+    expect(applyActionEffect(debuff, {}, [target]).changes[0].effect).toMatchObject({ duration: 2, resistanceReduction: 0.3 });
+    const charge = { ...base, onHitEffect: { effectKind: 'reposition' } };
+    expect(applyActionEffect(charge, {}, [target], Math.random, { position: { row: 0, column: 1 } }).changes[0]).toMatchObject({ repositioned: true });
+    expect(target.position.row).toBe(1);
+  });
+
   it('contains every documented Empire unit and preserves knight footprints', () => {
     expect(empireUnits).toHaveLength(77);
     expect(getEmpireUnit('empire_knight_t1')).toMatchObject({
@@ -386,14 +426,31 @@ describe('run loop', () => {
     expect(revived.army[0].hp).toBe(18);
   });
 
-  it('applies path rewards to experience, leadership capacity and mine income', () => {
-    const recruited = recruitUnit(createRun(), 'empire_archer_t1');
-    const rich = finishBattle(choosePath(recruited, createPaths(1).find((path) => path.id === 'rich')), { victory: true });
-    const risky = finishBattle(choosePath(rich, createPaths(rich.difficulty).find((path) => path.id === 'risky')), { victory: true });
+  it('creates deterministic random rewards scaled from each path leadership budget', () => {
+    const multipliers = { gold: 2, lord_experience: 4, skill_points: 0.05, mines: 0.08 };
+    const paths = createPaths(3, 42);
 
-    expect(rich).toMatchObject({ gold: 28, economicLimit: 14, mines: 0 });
-    expect(risky).toMatchObject({ gold: 43, mines: 1 });
-    expect(risky.army[0].exp).toBe(10);
+    expect(paths).toEqual(createPaths(3, 42));
+    expect(paths.map((path) => path.leadershipBudget)).toEqual([6, 12, 18]);
+    for (const path of paths) {
+      expect(path.reward.amount).toBe(Math.floor(path.leadershipBudget * multipliers[path.reward.type]));
+      expect(path.reward.amount).toBeGreaterThan(0);
+    }
+
+    for (const difficulty of [1, 5, 10]) {
+      for (const path of createPaths(difficulty, 7)) {
+        expect(path.reward.amount).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('applies gold, lord experience, skill points, and mine rewards on victory', () => {
+    const recruited = recruitUnit(createRun(), 'empire_archer_t1');
+    const selectedPath = { id: 'reward-test', lordExperienceReward: 16, skillPointReward: 1, mineReward: 2 };
+    const completed = finishBattle(choosePath(recruited, selectedPath), { victory: true });
+
+    expect(completed).toMatchObject({ gold: 18, mines: 2 });
+    expect(getRunLord(completed)).toMatchObject({ experience: 16, skillPoints: 1 });
   });
 
   it('does not enter a battle path when every army member is dead', () => {

@@ -19,6 +19,9 @@ export function createUnitInstance(definition, lord) {
     hp: maxHp,
     actions: definition.combat.actions,
     passives: definition.combat.passives ?? [],
+    positionModifiers: definition.positionModifiers ?? [],
+    resistances: definition.combat.resistances ?? {},
+    role: definition.role,
     raceType: 'human',
     effects: [],
     cooldowns: {}
@@ -140,7 +143,7 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
         const action = selectAutomaticAction(attacker, attackers, defenders, state[crystalKey]);
         if (action) {
           const candidates = action.targetRule.side === 'ally' ? attackers : defenders;
-          const resolution = applyActionEffect(action, attacker.lord ?? {}, candidates, rng, attacker, action.targetRule.side === 'enemy' ? defenders : attackers);
+          const resolution = applyActionEffect(action, attacker.lord ?? {}, candidates, rng, attacker, action.targetRule.side === 'enemy' ? defenders : attackers, attackers);
           attackers[attackerIndex] = spendActionResources(attacker, action);
           state[crystalKey] = spendCrystalResources(state[crystalKey], action);
           for (const change of resolution.changes) {

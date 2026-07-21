@@ -7,12 +7,37 @@ const enemyProfiles = {
   risky: { leadership: 12, growth: 3, maxUnits: 6, label: 'Важкий загін' }
 };
 
+const rewardDefinitions = [
+  { type: 'gold', multiplier: 2 },
+  { type: 'lord_experience', multiplier: 4 },
+  { type: 'skill_points', multiplier: 0.05 },
+  { type: 'mines', multiplier: 0.08 }
+];
+
 function createEnemyRng(seed) {
   let state = Number(seed) >>> 0;
   return () => {
     state = (state * 1664525 + 1013904223) >>> 0;
     return state / 4294967296;
   };
+}
+
+function getEnemyLeadershipBudget(pathId, difficulty) {
+  const profile = enemyProfiles[pathId] ?? enemyProfiles.safe;
+  return profile.leadership + (difficulty - 1) * profile.growth;
+}
+
+function pathRewardSeed(seed, difficulty, pathId) {
+  const pathValue = String(pathId).split('').reduce((total, character) => total + character.charCodeAt(0), 0);
+  return Number(seed) + difficulty * 1009 + pathValue;
+}
+
+function createPathReward(leadershipBudget, rng) {
+  const availableRewards = rewardDefinitions
+    .map((definition) => ({ ...definition, amount: Math.floor(leadershipBudget * definition.multiplier) }))
+    // Skill points and mines cannot be awarded as zero-value rewards.
+    .filter((reward) => reward.type === 'gold' || reward.type === 'lord_experience' || reward.amount > 0);
+  return availableRewards[Math.floor(rng() * availableRewards.length)];
 }
 
 function shuffleEnemyCandidates(candidates, rng) {
@@ -89,7 +114,7 @@ function canPlaceEnemyComposition(composition) {
 /** Створює армію Імперії без бонусів лорда для одного зі шляхів. */
 export function generateEnemyArmy({ pathId, difficulty = 1, seed = 1 }) {
   const profile = enemyProfiles[pathId] ?? enemyProfiles.safe;
-  const leadershipBudget = profile.leadership + (difficulty - 1) * profile.growth;
+  const leadershipBudget = getEnemyLeadershipBudget(pathId, difficulty);
   const maxTier = difficulty >= 7 ? 3 : difficulty >= 3 ? 2 : 1;
   const rng = createEnemyRng(seed);
   const candidates = Array.from({ length: maxTier }, (_, index) => index + 1)
@@ -267,10 +292,14 @@ export function finishBattle(run, { victory, army = run.army }) {
   const lives = victory ? run.lives : run.lives - 1;
   const rewards = victory ? run.selectedPath ?? {} : {};
   const experiencedArmy = army.map((member) => ({ ...member, exp: member.exp + (rewards.expReward ?? 0) }));
-  const lordExperienceReward = experiencedArmy.reduce((total, member, index) => total + (member.exp - (army[index]?.exp ?? member.exp)), 0);
-  const lordProgress = victory
+  const armyExperienceReward = experiencedArmy.reduce((total, member, index) => total + (member.exp - (army[index]?.exp ?? member.exp)), 0);
+  const lordExperienceReward = armyExperienceReward + (rewards.lordExperienceReward ?? 0);
+  const experiencedLordProgress = victory
     ? addLordExperience(run.lordProgress, lordExperienceReward)
     : normalizeLordProgress(run.lordProgress);
+  const lordProgress = victory
+    ? { ...experiencedLordProgress, skillPoints: experiencedLordProgress.skillPoints + (rewards.skillPointReward ?? 0) }
+    : experiencedLordProgress;
   return {
     ...run,
     lives,
@@ -285,10 +314,22 @@ export function finishBattle(run, { victory, army = run.army }) {
   };
 }
 
-export function createPaths(difficulty) {
+export function createPaths(difficulty, seed = 1) {
   return [
-    { id: 'safe', name: 'Тихий шлях', goldReward: 5, expReward: 5, threat: difficulty },
-    { id: 'rich', name: 'Золота дорога', goldReward: 10, economicLimitReward: 2, threat: difficulty + 1 },
-    { id: 'risky', name: 'Небезпечний перевал', goldReward: 15, mineReward: 1, expReward: 10, threat: difficulty + 2 }
-  ];
+    { id: 'safe', name: 'Тихий шлях', threat: difficulty },
+    { id: 'rich', name: 'Золота дорога', threat: difficulty + 1 },
+    { id: 'risky', name: 'Небезпечний перевал', threat: difficulty + 2 }
+  ].map((path) => {
+    const leadershipBudget = getEnemyLeadershipBudget(path.id, difficulty);
+    const reward = createPathReward(leadershipBudget, createEnemyRng(pathRewardSeed(seed, difficulty, path.id)));
+    return {
+      ...path,
+      leadershipBudget,
+      reward,
+      goldReward: reward.type === 'gold' ? reward.amount : 0,
+      lordExperienceReward: reward.type === 'lord_experience' ? reward.amount : 0,
+      skillPointReward: reward.type === 'skill_points' ? reward.amount : 0,
+      mineReward: reward.type === 'mines' ? reward.amount : 0
+    };
+  });
 }

@@ -20,10 +20,56 @@ function gridDistance(left, right) {
   return Math.abs(left.position.row - right.position.row) + Math.abs(left.position.column - right.position.column);
 }
 
+function adjacentAllies(unit, allies = []) {
+  if (!unit?.position) return [];
+  return allies.filter((ally) => ally !== unit && ally.id !== unit.id && ally.hp > 0 && ally.position && gridDistance(ally, unit) === 1);
+}
+
+function percentFrom(text, keyword) {
+  const match = text.match(new RegExp(`([+-]?[0-9.]+)\\s*%[^,]*(?:${keyword})`, 'i'));
+  return match ? Number(match[1]) / 100 : 0;
+}
+
+function hasPositionCondition(unit, allies, condition) {
+  if (!unit?.position) return false;
+  const positioned = allies.filter((ally) => ally.hp > 0 && ally.position);
+  const adjacent = adjacentAllies(unit, allies);
+  const rows = positioned.map((ally) => ally.position.row);
+  const frontline = rows.length ? Math.min(...rows) : null;
+  const backline = rows.length ? Math.max(...rows) : null;
+  if (condition === 'is_own_vanguard') return unit.position.row === frontline;
+  if (condition === 'is_own_backline') return unit.position.row === backline;
+  if (condition === 'is_own_vanguard_unshielded') return unit.position.row === frontline && adjacent.length === 0;
+  if (condition === 'no_adjacent_allies') return adjacent.length === 0;
+  if (condition === 'adjacent_ally_melee') return adjacent.some((ally) => ally.role === 'melee');
+  const count = condition.match(/^adjacent_ally_count>=([0-9]+)$/);
+  return count ? adjacent.length >= Number(count[1]) : false;
+}
+
+function positionBonuses(unit, allies = []) {
+  return (unit?.positionModifiers ?? []).reduce((bonuses, modifier) => {
+    if (!hasPositionCondition(unit, allies, modifier.condition)) return bonuses;
+    const effect = modifier.effect ?? '';
+    const signed = effect.match(/([+-][0-9.]+)\s*%/);
+    if (/formula/i.test(effect) && signed) bonuses.formulaMultiplier *= 1 + Number(signed[1]) / 100;
+    if (/crit_chance/i.test(effect)) bonuses.critChanceBonus += percentFrom(effect, 'crit_chance');
+    if (/ignore_resistance_pct/i.test(effect)) bonuses.ignoreResistancePct += percentFrom(effect, 'ignore_resistance_pct');
+    if (/resistances/i.test(effect) && signed) bonuses.resistanceBonus += Number(signed[1]) / 100;
+    if (/контратаки/i.test(effect) && signed) bonuses.counterMultiplier *= 1 + Number(signed[1]) / 100;
+    return bonuses;
+  }, { formulaMultiplier: 1, critChanceBonus: 0, ignoreResistancePct: 0, resistanceBonus: 0, counterMultiplier: 1 });
+}
+
 function passivePercent(unit, keyword) {
   const passive = unit.passives?.find((item) => item.id === keyword || item.effect?.toLowerCase().includes(keyword));
   const match = passive?.effect?.match(/([0-9.]+)\s*%/);
   return match ? Number(match[1]) / 100 : 0;
+}
+
+function passiveNumericValue(unit, keyword) {
+  const passive = unit.passives?.find((item) => item.id === keyword || item.effect?.toLowerCase().includes(keyword));
+  const match = passive?.effect?.match(new RegExp(`${keyword}:([0-9.]+)`, 'i'));
+  return match ? Number(match[1]) : 0;
 }
 
 function effectPercent(unit, key) {
@@ -31,7 +77,8 @@ function effectPercent(unit, key) {
 }
 
 function resistanceFor(target, damageType) {
-  const base = (target.resistances?.[damageType] ?? target.resistance ?? 0) + (target.auraResistanceBonus ?? 0);
+  const rawBase = target.resistances?.[damageType] ?? target.resistance ?? 0;
+  const base = (rawBase > 1 ? rawBase / 100 : rawBase) + (target.auraResistanceBonus ?? 0) + (target.positionResistanceBonus ?? 0);
   const reduction = (target.effects ?? [])
     .filter((effect) => effect.resistanceReduction)
     .reduce((total, effect) => total + effect.resistanceReduction, 0);
@@ -39,12 +86,14 @@ function resistanceFor(target, damageType) {
 }
 
 export function calculateDamage(action, amount, attacker, target, rng = Math.random) {
+  const evade = action.rangeType === 'melee' ? passiveNumericValue(target, 'melee_evasion_bonus') : 0;
+  if (evade > 0 && rng() < evade) return { amount: 0, critical: false, resistance: resistanceFor(target, action.type), evaded: true };
   const critical = rng() < Math.min(1, (attacker?.critChance ?? 0) + (action.critChanceBonus ?? 0));
   const raceBonus = action.bonusVsRaceType?.[target.raceType] ?? 1;
   const penetration = Math.max(0, Math.min(1, (action.ignoreResistancePct ?? 0) + (action.armorPenetrationPct ?? 0)));
   const resistance = resistanceFor(target, action.type) * (1 - penetration);
   const damage = amount * (attacker?.auraAttackMultiplier ?? 1) * raceBonus * (critical ? (action.critMultiplier ?? 2) : 1) * (1 - resistance) * (1 - (target.damageReductionPct ?? 0));
-  return { amount: damage, critical, resistance };
+  return { amount: damage, critical, resistance, evaded: false };
 }
 
 export function getAccessibleTargets(candidates, attacker, rangeType) {
@@ -113,7 +162,9 @@ export function expandAreaTargets(candidates, primaryTargets, action) {
     if (!unit.position || unit.hp <= 0) return false;
     if (shape === 'row') return unit.position.row === origin.position.row;
     if (shape === 'column') return unit.position.column === origin.position.column;
-    if (shape === 'circle') return gridDistance(unit, origin) <= radius;
+    if (shape === 'circle') return Math.max(Math.abs(unit.position.row - origin.position.row), Math.abs(unit.position.column - origin.position.column)) <= radius;
+    if (shape === 'cross') return unit.position.row === origin.position.row || unit.position.column === origin.position.column;
+    if (shape === 'diagonal') return Math.abs(unit.position.row - origin.position.row) === Math.abs(unit.position.column - origin.position.column);
     if (shape === 'width') return unit.position.row === origin.position.row && Math.abs(unit.position.column - origin.position.column) <= width;
     return false;
   };
@@ -180,8 +231,14 @@ function getTacticalTargetRule(action, attacker) {
   return selection ? { ...rule, selection } : rule;
 }
 
-export function applyActionEffect(action, lord, candidates, rng, attacker, guardians = candidates) {
-  const resolution = resolveAction(action, lord, candidates, rng, attacker);
+export function applyActionEffect(action, lord, candidates, rng, attacker, guardians = candidates, attackerAllies = []) {
+  const attackerBonuses = positionBonuses(attacker, attackerAllies);
+  const adjustedAction = {
+    ...action,
+    critChanceBonus: (action.critChanceBonus ?? 0) + attackerBonuses.critChanceBonus,
+    ignoreResistancePct: (action.ignoreResistancePct ?? 0) + attackerBonuses.ignoreResistancePct
+  };
+  const resolution = resolveAction(adjustedAction, lord, candidates, rng, attacker);
   const changes = resolution.targets.map((target) => {
     const hpBefore = target.hp;
     const effectsBefore = target.effects ?? [];
@@ -190,7 +247,15 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     const loneDuel = attacker?.passives?.find((passive) => passive.id === 'lone_duel');
     const targetHasNeighbor = target.position && guardians.some((ally) => ally.id !== target.id && ally.hp > 0 && ally.position && gridDistance(ally, target) === 1);
     const loneDuelBonus = loneDuel && !targetHasNeighbor ? passivePercent(attacker, 'lone_duel') : 0;
-    const damage = action.effectKind === 'damage' ? calculateDamage(action, resolution.amount * (1 + loneDuelBonus), attacker, target, rng) : null;
+    const targetBonuses = positionBonuses(target, guardians);
+    const targetWithPositionBonuses = { ...target, positionResistanceBonus: targetBonuses.resistanceBonus };
+    const targetIsNonFrontline = target.position && guardians.some((ally) => ally.hp > 0 && ally.position && ally.position.row < target.position.row);
+    const targetHasManaAction = target.actions?.some((targetAction) => (targetAction.manaCost ?? 0) > 0);
+    const actionMultiplier = (action.bonusIfTargetNonFrontline && targetIsNonFrontline ? action.bonusIfTargetNonFrontline : 1)
+      * (action.bonusVsActionHasManaCost && targetHasManaAction ? action.bonusVsActionHasManaCost : 1);
+    const damage = action.effectKind === 'damage'
+      ? calculateDamage(adjustedAction, resolution.amount * attackerBonuses.formulaMultiplier * (1 + loneDuelBonus) * actionMultiplier, attacker, targetWithPositionBonuses, rng)
+      : null;
     const finalDamage = damage?.amount ?? 0;
     const redirectedDamage = finalDamage * redirectPct;
     const arthurEffects = attacker?.lord?.id === 'empire_lord_arthur' ? getLordSkillEffects(attacker.lord) : null;
@@ -217,13 +282,13 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     const manaBurn = Number(String(action.onHitEffect ?? '').match(/mana_burn:(\d+)/)?.[1] ?? 0);
     const resistanceText = String(action.effect ?? rawStatus?.effect ?? '');
     const resistanceReduction = Number(resistanceText.match(/-([0-9.]+)%.*resist/i)?.[1] ?? 0) / 100;
-    const controlImmune = status && (status.id === 'stun' || status.id === 'paralyze') && target.passives?.some((passive) => passive.id === 'silent_immunity');
+    const controlImmune = status && ['stun', 'paralyze', 'silence', 'fear', 'charm'].includes(status.id) && target.passives?.some((passive) => passive.id === 'silent_immunity');
     const effect = (['buff', 'debuff', 'control'].includes(action.effectKind) || status) && !controlImmune
       ? {
         id: status?.id ?? action.id,
         kind: action.effectKind === 'damage' ? (status?.id === 'stun' || status?.id === 'paralyze' ? 'control' : 'debuff') : action.effectKind,
         amount: resolution.amount,
-        duration: action.duration ?? status?.duration ?? status?.ticks ?? null,
+        duration: action.duration ?? status?.duration ?? status?.ticks ?? Number(String(action.effect ?? '').match(/на\s*([0-9]+)\s*ход/i)?.[1] ?? null),
         damagePerTurn: action.effectKind === 'damage' && status ? Math.max(1, Math.floor(resolution.amount * 0.2)) : 0,
         reflectPct: action.reflectPct ?? 0,
         resistanceReduction
@@ -232,7 +297,10 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
 
     target.hp = hpAfter;
     if (manaBurn) target.mana = Math.max(0, (target.mana ?? 0) - manaBurn);
-    if (action.effectKind === 'reposition' && target.position) target.position = { ...target.position, row: Math.max(0, target.position.row - 1) };
+    if ((action.effectKind === 'reposition' || action.onHitEffect?.effectKind === 'reposition') && target.position) {
+      const direction = action.effectKind === 'reposition' ? -1 : 1;
+      target.position = { ...target.position, row: Math.max(0, target.position.row + direction) };
+    }
     if (hasPurge) target.effects = effectsBefore.filter((item) => item.kind !== 'buff');
     if (action.cleanseDebuffCount) {
       let remaining = action.cleanseDebuffCount;
@@ -245,7 +313,7 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     const counterPassive = action.effectKind === 'damage' && action.rangeType === 'melee' && target.hp > 0
       ? target.passives?.find((passive) => passive.id === 'counter_attack')
       : null;
-    const counterAmount = counterPassive ? evaluateFormula(counterPassive.formula, target.lord ?? {}) : 0;
+    const counterAmount = counterPassive ? evaluateFormula(counterPassive.formula, target.lord ?? {}) * targetBonuses.counterMultiplier : 0;
     const counter = counterPassive && attacker
       ? calculateDamage({ type: 'physical' }, counterAmount, target, attacker, rng)
       : null;
@@ -257,9 +325,14 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     const healedAttacker = attacker && lifesteal ? Math.min(attacker.maxHp, attacker.hp + finalDamage * lifesteal) - attacker.hp : 0;
     if (attacker && healedAttacker) attacker.hp += healedAttacker;
     if (effect) target.effects = [...(target.effects ?? effectsBefore), effect];
+    if (action.onKillSpread && target.hp === 0 && effect && target.position) {
+      for (const neighbor of candidates.filter((candidate) => candidate.hp > 0 && candidate.position && gridDistance(candidate, target) === 1)) {
+        neighbor.effects = [...(neighbor.effects ?? []), { ...effect }];
+      }
+    }
     if (damage?.critical && action.executeOnCritBelowHpPct && target.hp / target.maxHp <= action.executeOnCritBelowHpPct) target.hp = 0;
     if (mercyActive && target.hp / target.maxHp < arthurEffects.executeThreshold) target.hp = 0;
-    return { targetId: target.id, hpBefore, hpAfter: target.hp, effect, guardianId: guardian?.id ?? null, redirectedDamage, damage: finalDamage, mercyDamage, critical: damage?.critical ?? false, reflectedDamage, counterDamage: counter?.amount ?? 0, counterHealing, healedAttacker, manaBurn, revived: isRevive && !blockedRevive, repositioned: action.effectKind === 'reposition' };
+    return { targetId: target.id, hpBefore, hpAfter: target.hp, effect, guardianId: guardian?.id ?? null, redirectedDamage, damage: finalDamage, mercyDamage, critical: damage?.critical ?? false, evaded: damage?.evaded ?? false, reflectedDamage, counterDamage: counter?.amount ?? 0, counterHealing, healedAttacker, manaBurn, revived: isRevive && !blockedRevive, repositioned: action.effectKind === 'reposition' || action.onHitEffect?.effectKind === 'reposition' };
   });
 
   return { ...resolution, changes };
@@ -289,11 +362,16 @@ function actionEffectId(action) {
   return action.onHitDebuff?.id ?? action.onHitControl?.id ?? action.control ?? (['buff', 'debuff', 'control'].includes(action.effectKind) ? action.id : null);
 }
 
-function meetsActionCondition(action, allies, enemies) {
+function meetsActionCondition(action, allies, enemies, unit) {
   if (!action.condition) return true;
   const candidates = action.targetRule.side === 'ally' ? allies : enemies;
+  const accessible = action.targetRule.side === 'self' ? [unit] : getAccessibleTargets(candidates, unit, action.rangeType);
+  if (action.condition.targetHasManaAction) return accessible.some((target) => target.actions?.some((candidate) => (candidate.manaCost ?? 0) > 0));
   return candidates.some((target) => {
+    if (action.condition.hpPctBelow !== undefined && !(target.hp / target.maxHp < action.condition.hpPctBelow)) return false;
+    if (action.condition.raceTypeIn && !action.condition.raceTypeIn.includes(target.raceType)) return false;
     const value = action.condition.field === 'hpPct' ? target.hp / target.maxHp : target[action.condition.field];
+    if (!action.condition.field) return true;
     return action.condition.operator === 'lt' ? value < action.condition.value : value > action.condition.value;
   });
 }
@@ -333,7 +411,7 @@ function meetsTacticalRule(action, tactics, allies, enemies, resource, unit) {
 export function selectAutomaticAction(unit, allies = [], enemies = [], resource = unit) {
   const actions = (unit.actions ?? [])
     .filter((action) => isActionUsable(action, unit, resource))
-    .filter((action) => meetsActionCondition(action, allies, enemies));
+    .filter((action) => meetsActionCondition(action, allies, enemies, unit));
   const configuredPriorities = unit.tactics?.actionPriority;
   if (Array.isArray(configuredPriorities)) {
     for (const actionId of configuredPriorities) {
