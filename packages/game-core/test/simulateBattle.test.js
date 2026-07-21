@@ -336,7 +336,7 @@ describe('Empire unit catalog', () => {
     const result = simulateBattle({ allies: [{ ...archer, lord }], enemies: [defender], seed: 1 });
 
     expect(archer.maxHp).toBe(36);
-    expect(result.events[0]).toMatchObject({ actionId: 'basic_shot', amount: 11 });
+    expect(result.events[0]).toMatchObject({ actionId: 'basic_shot', amount: 11, damageType: 'physical', effectsAfter: [] });
   });
 });
 

@@ -123,7 +123,7 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
         attackers[attackerIndex] = attacker;
         if (attacker.hp <= 0) continue;
         if (attacker.effects.some((effect) => effect.kind === 'control')) {
-          state.events.push({ type: 'control_skip', round: state.round, unitId: attacker.id });
+          state.events.push({ type: 'control_skip', round: state.round, unitId: attacker.id, effectsAfter: attacker.effects.map((effect) => ({ ...effect })) });
           continue;
         }
 
@@ -145,17 +145,24 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
               round: state.round,
               attackerId: attacker.id,
               targetId: change.targetId,
-              amount: change.damage || resolution.amount,
+              amount: action.effectKind === 'damage' ? change.damage : resolution.amount,
               hpBefore: change.hpBefore,
               hpAfter: change.hpAfter,
               isCritical: change.critical,
-              actionId: action.id
+              actionId: action.id,
+              damageType: action.type ?? 'physical',
+              effect: change.effect ? { ...change.effect } : null,
+              effectsAfter: (resolution.targets.find((unit) => unit.id === change.targetId)?.effects ?? []).map((effect) => ({ ...effect })),
+              attackerEffectsAfter: (attackers[attackerIndex].effects ?? []).map((effect) => ({ ...effect })),
+              positionAfter: resolution.targets.find((unit) => unit.id === change.targetId)?.position
+                ? { ...resolution.targets.find((unit) => unit.id === change.targetId).position }
+                : null
             });
             if (change.reflectedDamage) {
-              state.events.push({ type: 'reflect', round: state.round, attackerId: change.targetId, targetId: attacker.id, amount: change.reflectedDamage });
+              state.events.push({ type: 'reflect', round: state.round, attackerId: change.targetId, targetId: attacker.id, amount: change.reflectedDamage, damageType: 'arcane' });
             }
             if (change.counterDamage) {
-              state.events.push({ type: 'counter', round: state.round, attackerId: change.targetId, targetId: attacker.id, amount: change.counterDamage });
+              state.events.push({ type: 'counter', round: state.round, attackerId: change.targetId, targetId: attacker.id, amount: change.counterDamage, damageType: 'physical' });
             }
             if (change.hpAfter === 0) {
               state.events.push({ type: 'death', round: state.round, unitId: change.targetId });
@@ -176,7 +183,7 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
           const hpBefore = target.hp;
           target.hp = Math.max(0, target.hp - damage);
           state.events.push({
-            type: 'attack', round: state.round, attackerId: attacker.id, targetId: target.id, damage, hpBefore, hpAfter: target.hp, isCritical, actionId: 'basic_attack'
+            type: 'attack', round: state.round, attackerId: attacker.id, targetId: target.id, damage, hpBefore, hpAfter: target.hp, isCritical, actionId: 'basic_attack', damageType: 'physical', effectsAfter: (target.effects ?? []).map((effect) => ({ ...effect }))
           });
           if (target.hp === 0) {
             state.events.push({ type: 'death', round: state.round, unitId: target.id });
