@@ -128,12 +128,19 @@ export function createDefaultTactics(unit) {
   const actions = [...unit.combat.actions].sort((left, right) => priority(left) - priority(right));
   return {
     actionPriority: actions.map((action) => action.id),
-    actionRules: Object.fromEntries(actions.map((action) => [action.id, {
-      allyHealth: action.effectKind === 'heal' ? 'any_below' : 'any',
-      healthThreshold: 65,
-      crystal: action.manaCost ? 'at_least' : 'enough',
-      crystalValue: action.manaCost ?? 0
-    }])),
+    actionRules: Object.fromEntries(actions.map((action) => {
+      const isRevive = action.targetRule?.selection === 'corpse_of_dead_ally';
+      const isStatusSkill = ['buff', 'debuff', 'control'].includes(action.effectKind) && !isRevive;
+      return [action.id, {
+        allyHealth: action.effectKind === 'heal' && !isRevive ? 'any_below' : 'any',
+        healthThreshold: 65,
+        enemyHealth: 'any',
+        enemyHealthThreshold: 65,
+        effectState: isStatusSkill ? 'missing' : 'any',
+        crystal: action.manaCost ? 'at_least' : 'enough',
+        crystalValue: action.manaCost ?? 0
+      }];
+    })),
     // An untouched target order deliberately uses the target rule authored
     // for each skill (for example, a sniper keeps "lowest HP").
     targetPriority: {}

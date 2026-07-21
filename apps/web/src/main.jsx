@@ -108,10 +108,21 @@ function actionPriorityOrder(member, unit) {
   return [...validSaved, ...unit.combat.actions.map((action) => action.id).filter((actionId) => !validSaved.includes(actionId))];
 }
 
+function actionConditionKind(action) {
+  if (action.effectKind === 'heal' && action.targetRule?.selection !== 'corpse_of_dead_ally') return 'allyHealth';
+  if (action.effectKind === 'damage') return 'enemyHealth';
+  if (['buff', 'debuff', 'control'].includes(action.effectKind) && action.targetRule?.selection !== 'corpse_of_dead_ally') return 'effect';
+  return null;
+}
+
 function defaultActionRule(action) {
+  const conditionKind = actionConditionKind(action);
   return {
-    allyHealth: action.effectKind === 'heal' ? 'any_below' : 'any',
+    allyHealth: conditionKind === 'allyHealth' ? 'any_below' : 'any',
     healthThreshold: 65,
+    enemyHealth: 'any',
+    enemyHealthThreshold: 65,
+    effectState: conditionKind === 'effect' ? 'missing' : 'any',
     crystal: action.manaCost ? 'at_least' : 'enough',
     crystalValue: action.manaCost ?? 0
   };
@@ -223,12 +234,14 @@ function TacticsModal({ member, unit, onClose, onChange }) {
           {skillPriorities.map((actionId, index) => {
             const action = unit.combat.actions.find((candidate) => candidate.id === actionId);
             const rule = actionRuleFor(member, action);
+            const conditionKind = actionConditionKind(action);
             return <li key={actionId}>
               <span className="priority-number">{index + 1}</span>
               <div className="tactical-action-copy"><b>{action.name}</b><small>{actionTacticSummary(action)}</small>
                 <div className="tactical-rule-fields">
-                  <label>Стан союзників<select value={rule.allyHealth} onChange={(event) => updateActionRule(action, { allyHealth: event.target.value })}><option value="any">Не враховувати</option><option value="any_below">Є союзник з HP не вище</option><option value="all_above">Усі союзники мають HP не нижче</option></select></label>
-                  {rule.allyHealth !== 'any' && <label>Поріг HP<input type="number" min="1" max="100" value={rule.healthThreshold} onChange={(event) => updateActionRule(action, { healthThreshold: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} /><span>%</span></label>}
+                  {conditionKind === 'allyHealth' && <><label>Стан союзників<select value={rule.allyHealth} onChange={(event) => updateActionRule(action, { allyHealth: event.target.value })}><option value="any">Не враховувати</option><option value="any_below">Є союзник з HP не вище</option><option value="all_above">Усі союзники мають HP не нижче</option></select></label>{rule.allyHealth !== 'any' && <label>Поріг HP<input type="number" min="1" max="100" value={rule.healthThreshold} onChange={(event) => updateActionRule(action, { healthThreshold: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} /><span>%</span></label>}</>}
+                  {conditionKind === 'enemyHealth' && <><label>Стан ворогів<select value={rule.enemyHealth} onChange={(event) => updateActionRule(action, { enemyHealth: event.target.value })}><option value="any">Не враховувати</option><option value="any_below">Є ворог з HP не вище</option><option value="all_above">Усі доступні вороги мають HP не нижче</option></select></label>{rule.enemyHealth !== 'any' && <label>Поріг HP<input type="number" min="1" max="100" value={rule.enemyHealthThreshold} onChange={(event) => updateActionRule(action, { enemyHealthThreshold: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} /><span>%</span></label>}</>}
+                  {conditionKind === 'effect' && <label>Ефект навички на цілі<select value={rule.effectState} onChange={(event) => updateActionRule(action, { effectState: event.target.value })}><option value="missing">Накладати, якщо ефекту ще немає</option><option value="any">Не враховувати</option></select></label>}
                   <label>Заряд кристалу<select value={rule.crystal} onChange={(event) => updateActionRule(action, { crystal: event.target.value })}><option value="enough">Достатньо для навички</option><option value="at_least">Не нижче</option><option value="at_most">Не вище</option></select></label>
                   {rule.crystal !== 'enough' && <label>Поріг заряду<input type="number" min="0" value={rule.crystalValue} onChange={(event) => updateActionRule(action, { crystalValue: Math.max(0, Number(event.target.value) || 0) })} /></label>}
                 </div>

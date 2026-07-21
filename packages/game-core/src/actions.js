@@ -271,15 +271,20 @@ export function isActionUsable(action, unit, resource = unit) {
 
 function hasMeaningfulTarget(action, unit, allies, enemies) {
   const rule = action.targetRule ?? {};
+  const effectId = actionEffectId(action);
   if (rule.selection === 'self' || rule.side === 'self') {
-    return action.effectKind !== 'buff' || !(unit.effects ?? []).some((effect) => effect.id === action.id);
+    return !effectId || !(unit.effects ?? []).some((effect) => effect.id === effectId);
   }
   const candidates = rule.side === 'ally' ? allies : enemies;
   if (rule.selection === 'corpse_of_dead_ally') return candidates.some((target) => target.hp <= 0 && !(target.effects ?? []).some((effect) => effect.id === 'no_resurrection'));
   const targets = getAccessibleTargets(candidates, unit, action.rangeType);
   if (action.effectKind === 'heal') return targets.some((target) => target.hp > 0 && target.hp < target.maxHp);
-  if (action.effectKind === 'buff') return targets.some((target) => !(target.effects ?? []).some((effect) => effect.id === action.id));
+  if (effectId && ['buff', 'debuff', 'control'].includes(action.effectKind)) return targets.some((target) => !(target.effects ?? []).some((effect) => effect.id === effectId));
   return targets.length > 0;
+}
+
+function actionEffectId(action) {
+  return action.onHitDebuff?.id ?? action.onHitControl?.id ?? action.control ?? (['buff', 'debuff', 'control'].includes(action.effectKind) ? action.id : null);
 }
 
 function meetsActionCondition(action, allies, enemies) {
@@ -291,13 +296,30 @@ function meetsActionCondition(action, allies, enemies) {
   });
 }
 
-function meetsTacticalRule(action, tactics, allies, resource) {
+function meetsTacticalRule(action, tactics, allies, enemies, resource, unit) {
   const rule = tactics?.actionRules?.[action.id];
   if (!rule) return true;
   const livingAllies = allies.filter((ally) => ally.hp > 0 && ally.maxHp > 0);
-  const threshold = Math.max(0, Math.min(100, Number(rule.healthThreshold ?? 65))) / 100;
-  if (rule.allyHealth === 'any_below' && !livingAllies.some((ally) => ally.hp / ally.maxHp <= threshold)) return false;
-  if (rule.allyHealth === 'all_above' && (!livingAllies.length || !livingAllies.every((ally) => ally.hp / ally.maxHp >= threshold))) return false;
+  const allyThreshold = Math.max(0, Math.min(100, Number(rule.healthThreshold ?? 65))) / 100;
+  if (action.effectKind === 'heal' && action.targetRule?.selection !== 'corpse_of_dead_ally') {
+    if (rule.allyHealth === 'any_below' && !livingAllies.some((ally) => ally.hp / ally.maxHp <= allyThreshold)) return false;
+    if (rule.allyHealth === 'all_above' && (!livingAllies.length || !livingAllies.every((ally) => ally.hp / ally.maxHp >= allyThreshold))) return false;
+  }
+
+  const livingEnemies = getAccessibleTargets(enemies, unit, action.rangeType).filter((enemy) => enemy.maxHp > 0);
+  const enemyThreshold = Math.max(0, Math.min(100, Number(rule.enemyHealthThreshold ?? 65))) / 100;
+  if (action.effectKind === 'damage') {
+    if (rule.enemyHealth === 'any_below' && !livingEnemies.some((enemy) => enemy.hp / enemy.maxHp <= enemyThreshold)) return false;
+    if (rule.enemyHealth === 'all_above' && (!livingEnemies.length || !livingEnemies.every((enemy) => enemy.hp / enemy.maxHp >= enemyThreshold))) return false;
+  }
+
+  const effectId = actionEffectId(action);
+  if (effectId && action.targetRule?.selection !== 'corpse_of_dead_ally' && ['buff', 'debuff', 'control'].includes(action.effectKind)) {
+    const candidates = action.targetRule?.side === 'ally' ? allies : enemies;
+    const targets = action.targetRule?.selection === 'self' ? [unit] : getAccessibleTargets(candidates, unit, action.rangeType);
+    if (rule.effectState === 'missing' && !targets.some((target) => !(target.effects ?? []).some((effect) => effect.id === effectId))) return false;
+    if (rule.effectState === 'present' && !targets.some((target) => (target.effects ?? []).some((effect) => effect.id === effectId))) return false;
+  }
 
   const crystal = resource?.mana ?? 0;
   const crystalValue = Math.max(0, Number(rule.crystalValue ?? action.manaCost ?? 0));
@@ -314,7 +336,7 @@ export function selectAutomaticAction(unit, allies = [], enemies = [], resource 
   if (Array.isArray(configuredPriorities)) {
     for (const actionId of configuredPriorities) {
       const action = actions.find((candidate) => candidate.id === actionId);
-      if (action && meetsTacticalRule(action, unit.tactics, allies, resource) && hasMeaningfulTarget(action, unit, allies, enemies)) return action;
+      if (action && meetsTacticalRule(action, unit.tactics, allies, enemies, resource, unit) && hasMeaningfulTarget(action, unit, allies, enemies)) return action;
     }
   }
   // Compatibility with saves created before skills received their own order.

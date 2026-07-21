@@ -272,6 +272,19 @@ describe('Empire unit catalog', () => {
     expect(selectAutomaticAction(unit, [{ id: 'ally', hp: 4, maxHp: 10 }], [enemy], { mana: 10 }).id).toBe('heal');
   });
 
+  it('uses enemy health for attacks and skips repeated control effects', () => {
+    const basic = { id: 'basic', effectKind: 'damage', rangeType: 'ranged', formula: { base: 3, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const finisher = { id: 'finisher', effectKind: 'damage', rangeType: 'ranged', formula: { base: 8, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const stun = { id: 'stun', effectKind: 'control', control: 'stun', rangeType: 'ranged', formula: { base: 0, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const finisherUnit = { actions: [finisher, basic], tactics: { actionPriority: ['finisher', 'basic'], actionRules: { finisher: { enemyHealth: 'any_below', enemyHealthThreshold: 50 } } } };
+    const controller = { actions: [stun, basic], tactics: { actionPriority: ['stun', 'basic'], actionRules: { stun: { effectState: 'missing' } } } };
+
+    expect(selectAutomaticAction(finisherUnit, [], [{ id: 'healthy', hp: 8, maxHp: 10 }]).id).toBe('basic');
+    expect(selectAutomaticAction(finisherUnit, [], [{ id: 'wounded', hp: 4, maxHp: 10 }]).id).toBe('finisher');
+    expect(selectAutomaticAction(controller, [], [{ id: 'free', hp: 10, maxHp: 10, effects: [] }]).id).toBe('stun');
+    expect(selectAutomaticAction(controller, [], [{ id: 'stunned', hp: 10, maxHp: 10, effects: [{ id: 'stun', kind: 'control' }] }]).id).toBe('basic');
+  });
+
   it('reacts to melee hits with counterattacks and reflects damage from an active shield', () => {
     const hit = { id: 'hit', type: 'physical', effectKind: 'damage', rangeType: 'melee', formula: { base: 10, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
     const attacker = { id: 'attacker', hp: 50, maxHp: 50 };
