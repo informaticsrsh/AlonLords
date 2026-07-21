@@ -611,6 +611,11 @@ function App() {
     const enemiesInBattle = enemyArmy.units.map((member) => ({ ...createUnitInstance(getEmpireUnit(member.unitId), enemyLord), id: member.id, unitId: member.unitId, position: member.position, lord: enemyLord }));
     const battle = simulateBattle({ allies: alliesInBattle, enemies: enemiesInBattle, lord, enemyCrystal: enemyArmy.crystal, seed: run.seed + run.difficulty });
     const victory = battle.winner === 'ally';
+    const battleExperienceReward = battle.enemies
+      .filter((unit) => unit.hp === 0)
+      .reduce((total, unit) => total + (unit.experienceRewardOnKill ?? 0), 0);
+    const survivingUnitCount = battle.allies.filter((unit) => unit.hp > 0).length;
+    const unitExperienceReward = survivingUnitCount > 0 ? battleExperienceReward / survivingUnitCount : 0;
     const report = {
       victory,
       rounds: battle.round,
@@ -622,10 +627,16 @@ function App() {
       faith: Math.round(battle.battleSpirit),
       crystal: battle.allyCrystal,
       enemyArmy,
-      lordExperienceReward: victory ? (run.selectedPath.lordExperienceReward ?? 0) + run.army.length * (run.selectedPath.expReward ?? 0) : 0
+      battleExperienceReward,
+      unitExperienceReward,
+      survivingUnitCount,
+      lordExperienceReward: battleExperienceReward + (victory ? (run.selectedPath.lordExperienceReward ?? 0) : 0)
     };
     const hpByInstance = new Map(battle.allies.map((unit) => [unit.id, unit.hp]));
-    const updatedArmy = run.army.map((member) => ({ ...member, hp: hpByInstance.get(member.instanceId) ?? 0 }));
+    const updatedArmy = run.army.map((member) => ({
+      ...member,
+      hp: hpByInstance.get(member.instanceId) ?? 0
+    }));
     setBattlePlayback({ battle, report, victory, updatedArmy, initialAllies: alliesInBattle, initialEnemies: enemiesInBattle, index: 0, speed: 1, isPaused: false, isReplay: false });
   };
 
@@ -635,7 +646,7 @@ function App() {
       if (!battlePlayback.isReplay) {
         setLastBattle(battlePlayback.report);
         setLastReplay({ battle: battlePlayback.battle, initialAllies: battlePlayback.initialAllies, initialEnemies: battlePlayback.initialEnemies, report: battlePlayback.report });
-        setRun((current) => finishBattle(current, { victory: battlePlayback.victory, army: battlePlayback.updatedArmy }));
+        setRun((current) => finishBattle(current, { victory: battlePlayback.victory, army: battlePlayback.updatedArmy, battleExperienceReward: battlePlayback.report.battleExperienceReward }));
         setHubView('results');
       }
       setBattlePlayback(null);
@@ -826,6 +837,7 @@ function App() {
           <h3>{lastBattle.victory ? 'Перемога' : 'Поразка'} · {lastBattle.rounds} раундів</h3>
           <p className="battle-resources">Віра: {lastBattle.faith}/100 · Сила кристала: {Math.round(lastBattle.crystal.mana)}/{lastBattle.crystal.manaMax}</p>
           {lastBattle.victory && <p>Нагорода: {formatPathReward(lastBattle.path.reward)}.</p>}
+          {lastBattle.battleExperienceReward > 0 && <p>Досвід за переможених: +{formatStat(lastBattle.battleExperienceReward)} лорду · +{formatStat(lastBattle.unitExperienceReward)} EXP кожному з {lastBattle.survivingUnitCount} живих юнітів.</p>}
           {lastBattle.victory && run.lastUnlockedUnitId && <p>Відкрито для набору: <b>{getEmpireUnit(run.lastUnlockedUnitId)?.name}</b>.</p>}
           <div className="battle-state" aria-label="Фінальний стан бою">
             <div><h4>Імперія</h4>{lastBattle.allies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} />)}</div>

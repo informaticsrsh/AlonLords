@@ -347,16 +347,19 @@ export function choosePath(run, path) {
   return { ...run, phase: 'battle', selectedPath: path, lastUnlockedUnitId: null };
 }
 
-export function finishBattle(run, { victory, army = run.army }) {
+export function finishBattle(run, { victory, army = run.army, battleExperienceReward = 0 }) {
   const nextDifficulty = victory ? run.difficulty + 1 : Math.max(1, run.difficulty - 5);
   const lives = victory ? run.lives : run.lives - 1;
   const rewards = victory ? run.selectedPath ?? {} : {};
-  const experiencedArmy = army.map((member) => ({ ...member, exp: member.exp + (rewards.expReward ?? 0) }));
-  const armyExperienceReward = experiencedArmy.reduce((total, member, index) => total + (member.exp - (army[index]?.exp ?? member.exp)), 0);
-  const lordExperienceReward = armyExperienceReward + (rewards.lordExperienceReward ?? 0);
-  const experiencedLordProgress = victory
-    ? addLordExperience(run.lordProgress, lordExperienceReward)
-    : normalizeLordProgress(run.lordProgress);
+  const earnedBattleExperience = Math.max(0, Number(battleExperienceReward) || 0);
+  const survivors = army.filter((member) => member.hp === null || member.hp === undefined || Number(member.hp) > 0);
+  const experiencePerSurvivor = survivors.length > 0 ? earnedBattleExperience / survivors.length : 0;
+  const experiencedArmy = army.map((member) => ({
+    ...member,
+    exp: Math.max(0, Number(member.exp) || 0) + (member.hp === null || member.hp === undefined || Number(member.hp) > 0 ? experiencePerSurvivor : 0)
+  }));
+  const lordExperienceReward = earnedBattleExperience + (rewards.lordExperienceReward ?? 0);
+  const experiencedLordProgress = addLordExperience(run.lordProgress, lordExperienceReward);
   const lordProgress = victory
     ? { ...experiencedLordProgress, skillPoints: experiencedLordProgress.skillPoints + (rewards.skillPointReward ?? 0) }
     : experiencedLordProgress;

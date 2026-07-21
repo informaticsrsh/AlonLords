@@ -22,6 +22,7 @@ export function createUnitInstance(definition, lord) {
     positionModifiers: definition.positionModifiers ?? [],
     resistances: definition.combat.resistances ?? {},
     role: definition.role,
+    experienceRewardOnKill: definition.combat.expRewardOnKill ?? 0,
     raceType: 'human',
     effects: [],
     cooldowns: {}

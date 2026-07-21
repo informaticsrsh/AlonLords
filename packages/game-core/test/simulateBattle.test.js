@@ -395,11 +395,25 @@ describe('run loop', () => {
     expect(addLordExperience({ level: 20, experience: 500, skillPoints: 0 }, 25)).toMatchObject({ level: 21, experience: 0, skillPoints: 3 });
   });
 
-  it('awards a lord the sum of experience earned by its army', () => {
+  it('shares battle experience equally between surviving units and awards its total to the lord', () => {
     const onceRecruited = recruitUnit(createRun(), 'empire_archer_t1');
-    const run = choosePath(recruitUnit(onceRecruited, 'empire_infantry_t1'), { id: 'safe', goldReward: 5, expReward: 5 });
-    const completed = finishBattle(run, { victory: true });
-    expect(getRunLord(completed)).toMatchObject({ experience: 10, skillPoints: 0 });
+    const run = choosePath(recruitUnit(onceRecruited, 'empire_infantry_t1'), { id: 'safe', goldReward: 5 });
+    const completed = finishBattle(run, { victory: true, battleExperienceReward: 40 });
+    expect(completed.army.map((member) => member.exp)).toEqual([20, 20]);
+    expect(getRunLord(completed)).toMatchObject({ experience: 40, skillPoints: 0 });
+  });
+
+  it('does not award battle experience to dead units', () => {
+    const onceRecruited = recruitUnit(createRun(), 'empire_archer_t1');
+    const recruited = recruitUnit(onceRecruited, 'empire_infantry_t1');
+    const completed = finishBattle(choosePath(recruited, { id: 'safe' }), {
+      victory: true,
+      army: [{ ...recruited.army[0], hp: 10 }, { ...recruited.army[1], hp: 0 }],
+      battleExperienceReward: 40
+    });
+    expect(completed.army[0]).toMatchObject({ exp: 40 });
+    expect(completed.army[1]).toMatchObject({ exp: 0 });
+    expect(getRunLord(completed)).toMatchObject({ experience: 40 });
   });
 
   it('recruits in Hub, enters battle through a path, and grants its reward on victory', () => {
