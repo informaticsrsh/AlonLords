@@ -538,3 +538,37 @@ button { font-weight: 700; }
   .member-actions .tactics { grid-column: 1 / -1; }
   .tactics-heading { align-items: center; }
 }
+
+/* Detail and tactic views stay above the army screen instead of shifting its layout. */
+.modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: 22px; background: rgba(5, 7, 42, .74); backdrop-filter: blur(7px); }
+.modal-dialog { width: min(780px, 100%); max-height: min(860px, calc(100vh - 44px)); overflow-y: auto; margin: auto; border: 2px solid rgba(255, 226, 129, .72) !important; border-radius: 18px !important; background: linear-gradient(145deg, rgba(48, 52, 143, .99), rgba(49, 28, 105, .99)) !important; box-shadow: 0 26px 70px rgba(0, 0, 0, .52); }
+.unit-details.modal-dialog { display: block; padding: clamp(18px, 3vw, 28px); }
+.unit-details-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.unit-details-title h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit-details-title span { color: #ceddff; font-size: .76rem; }
+.unit-details-portrait { width: 64px; height: 64px; min-height: 64px; border-radius: 10px; }
+.modal-heading { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.modal-heading .eyebrow { margin: 0 0 3px; }
+.modal-heading h3 { margin: 0; }
+.tactics-modal { display: grid; gap: 12px; padding: clamp(18px, 3vw, 28px); color: #edf4ff; text-align: left; }
+.tactics-modal-intro { margin: 0; padding: 9px 11px; border-left: 3px solid #ffe58d; border-radius: 5px; color: #dce7ff; background: rgba(11, 18, 82, .36); font-size: .82rem; line-height: 1.45; }
+.tactics-modal .tactics-group { padding: 12px; }
+.tactical-actions li { align-items: start; }
+.tactical-action-copy { display: grid; gap: 3px; min-width: 0; }
+.tactical-rule-fields { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.tactical-rule-fields label { display: flex; align-items: center; gap: 4px; color: #d8e4ff; font-size: .7rem; }
+.tactical-rule-fields select, .tactical-rule-fields input { max-width: 170px; padding: 4px 5px; color: #f8f9ff; border: 1px solid rgba(209, 224, 255, .38); border-radius: 5px; background: rgba(22, 25, 100, .84); font: inherit; }
+.tactical-rule-fields input { width: 52px; }
+.tactics-modal-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.tactics-modal-footer button { margin: 0; padding: 8px 11px; }
+.tactics-modal-footer .tactics-reset { color: #eef4ff; border: 1px solid rgba(207, 222, 255, .5); border-radius: 7px; background: rgba(33, 37, 116, .82); }
+.member-actions .open-tactics { margin: 0; color: #31265d; border-color: #ffe680; background: linear-gradient(135deg, #ffe984, #f6ba58); }
+@media (max-width: 600px) {
+  .modal-backdrop { padding: 10px; align-items: start; }
+  .modal-dialog { max-height: calc(100vh - 20px); }
+  .unit-details-title h3 { white-space: normal; }
+  .unit-details-portrait { width: 52px; height: 52px; min-height: 52px; }
+  .tactical-rule-fields { display: grid; }
+  .tactical-rule-fields label { justify-content: space-between; }
+  .tactical-rule-fields select { max-width: 190px; }
+}

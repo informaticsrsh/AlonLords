@@ -3,7 +3,7 @@ import { getBattleLordStats, getEmpireLord } from './lords.js';
 
 export { empireUnits, getEmpireUnit } from './catalog.js';
 export { empireLords, getBattleLordStats, getEmpireLord } from './lords.js';
-export { choosePath, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
+export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
 export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, regenerateCrystal, resolveAction, selectAutomaticAction, selectTargets, spendActionResources, spendCrystalResources } from './actions.js';
 
 export function createUnitInstance(definition, lord) {

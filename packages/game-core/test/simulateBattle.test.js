@@ -261,6 +261,17 @@ describe('Empire unit catalog', () => {
     expect(resolveAction(heal, {}, [injured, nearby], Math.random, { position: { row: 0, column: 0 }, tactics: { targetPriority: { ally: ['nearest', 'lowest_hp'] } } }).targets[0].id).toBe('nearby');
   });
 
+  it('uses tactical health and crystal rules before selecting a prioritized skill', () => {
+    const strike = { id: 'strike', effectKind: 'damage', rangeType: 'ranged', formula: { base: 5, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const heal = { id: 'heal', effectKind: 'heal', rangeType: 'ranged', formula: { base: 5, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'ally', selection: 'lowest_hp', count: 1 }, manaCost: 10 };
+    const unit = { actions: [strike, heal], tactics: { actionPriority: ['heal', 'strike'], actionRules: { heal: { allyHealth: 'any_below', healthThreshold: 50, crystal: 'at_least', crystalValue: 10 } } } };
+    const enemy = { id: 'enemy', hp: 10, maxHp: 10 };
+
+    expect(selectAutomaticAction(unit, [{ id: 'ally', hp: 6, maxHp: 10 }], [enemy], { mana: 10 }).id).toBe('strike');
+    expect(selectAutomaticAction(unit, [{ id: 'ally', hp: 4, maxHp: 10 }], [enemy], { mana: 9 }).id).toBe('strike');
+    expect(selectAutomaticAction(unit, [{ id: 'ally', hp: 4, maxHp: 10 }], [enemy], { mana: 10 }).id).toBe('heal');
+  });
+
   it('reacts to melee hits with counterattacks and reflects damage from an active shield', () => {
     const hit = { id: 'hit', type: 'physical', effectKind: 'damage', rangeType: 'melee', formula: { base: 10, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
     const attacker = { id: 'attacker', hp: 50, maxHp: 50 };

@@ -111,6 +111,35 @@ function getEmpireUnitsByTier(tier) {
   return empireUnits.filter((unit) => unit.tier === tier);
 }
 
+/**
+ * A new recruit starts with useful, event-aware tactics. The player may later
+ * reorder these actions and tune the health/crystal thresholds in the UI.
+ */
+export function createDefaultTactics(unit) {
+  const priority = (action) => {
+    if (action.targetRule?.selection === 'corpse_of_dead_ally') return 0;
+    if (action.effectKind === 'heal') return 1;
+    if (action.effectKind === 'buff') return 2;
+    if (action.effectKind === 'control') return 3;
+    if (action.manaCost) return 4;
+    if (action.effectKind === 'damage') return 5;
+    return 6;
+  };
+  const actions = [...unit.combat.actions].sort((left, right) => priority(left) - priority(right));
+  return {
+    actionPriority: actions.map((action) => action.id),
+    actionRules: Object.fromEntries(actions.map((action) => [action.id, {
+      allyHealth: action.effectKind === 'heal' ? 'any_below' : 'any',
+      healthThreshold: 65,
+      crystal: action.manaCost ? 'at_least' : 'enough',
+      crystalValue: action.manaCost ?? 0
+    }])),
+    // An untouched target order deliberately uses the target rule authored
+    // for each skill (for example, a sniper keeps "lowest HP").
+    targetPriority: {}
+  };
+}
+
 export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
   const lord = getEmpireLord(lordId) ?? getEmpireLord('empire_lord_henrik');
   return {
@@ -140,7 +169,8 @@ export function recruitUnit(run, unitId) {
     unitId,
     hp: null,
     exp: 0,
-    position: null
+    position: null,
+    tactics: createDefaultTactics(unit)
   };
   return { ...run, gold: run.gold - cost, army: [...run.army, member], nextUnitNumber: run.nextUnitNumber + 1 };
 }

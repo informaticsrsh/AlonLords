@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { choosePath, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, updateArmyMember } from '@empire/game-core';
+import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
 const roster = empireUnits.filter((unit) => unit.tier === 1);
@@ -108,6 +108,19 @@ function actionPriorityOrder(member, unit) {
   return [...validSaved, ...unit.combat.actions.map((action) => action.id).filter((actionId) => !validSaved.includes(actionId))];
 }
 
+function defaultActionRule(action) {
+  return {
+    allyHealth: action.effectKind === 'heal' ? 'any_below' : 'any',
+    healthThreshold: 65,
+    crystal: action.manaCost ? 'at_least' : 'enough',
+    crystalValue: action.manaCost ?? 0
+  };
+}
+
+function actionRuleFor(member, action) {
+  return { ...defaultActionRule(action), ...(member.tactics?.actionRules?.[action.id] ?? {}) };
+}
+
 function targetPriorityOrder(member, side) {
   const saved = member.tactics?.targetPriority;
   const validSaved = Array.isArray(saved?.[side]) ? saved[side].filter((priority) => targetPriorityOptions[priority]) : [];
@@ -137,9 +150,15 @@ function UnitDetails({ unit, lord, onClose }) {
   const instance = createUnitInstance(unit, battleLord);
   const hpBreakdown = getFormulaBreakdown(unit.combat.hpFormula, battleLord);
   const affectedStats = [...new Set([unit.combat.hpFormula?.lordStat, ...unit.combat.actions.map((action) => action.formula?.lordStat)].filter(Boolean))];
-  return <article className="unit-details" aria-live="polite">
+  useEffect(() => {
+    const closeOnEscape = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <article className="unit-details modal-dialog" role="dialog" aria-modal="true" aria-label={`Деталі юніта ${unit.name}`}>
     <div className="unit-details-heading">
-      <div><p className="eyebrow">{'\u0414\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}</p><h3>{unit.name}</h3></div>
+      <div className="unit-details-title"><UnitPortrait unitId={unit.id} className="unit-details-portrait" /><div><p className="eyebrow">{'\u0414\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}</p><h3>{unit.name}</h3><span>{roleNames[unit.role] ?? unit.role} · рівень {unit.tier}</span></div></div>
       <button className="details-close" onClick={onClose} aria-label={'\u0417\u0430\u043a\u0440\u0438\u0442\u0438 \u0434\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}>×</button>
     </div>
     <dl className="unit-stats">
@@ -178,7 +197,52 @@ function UnitDetails({ unit, lord, onClose }) {
       <h4>{'\u041f\u0430\u0441\u0438\u0432\u043d\u0456 \u0437\u0434\u0456\u0431\u043d\u043e\u0441\u0442\u0456'}</h4>
       <ul>{unit.combat.passives.map((passive) => <li key={passive.id}><b>{passive.id}</b>{passive.effect ? ` — ${passive.effect}` : ''}{passive.trigger ? ` (${passive.trigger})` : ''}</li>)}</ul>
     </section>}
-  </article>;
+    </article>
+  </div>;
+}
+
+function TacticsModal({ member, unit, onClose, onChange }) {
+  const skillPriorities = actionPriorityOrder(member, unit);
+  const enemyTargetPriorities = targetPriorityOrder(member, 'enemy');
+  const allyTargetPriorities = targetPriorityOrder(member, 'ally');
+  const updateTactics = (patch) => onChange({ ...member.tactics, ...patch });
+  const updateActionRule = (action, patch) => updateTactics({ actionRules: { ...(member.tactics?.actionRules ?? {}), [action.id]: { ...actionRuleFor(member, action), ...patch } } });
+  const updateTargetPriorities = (side, priorities) => updateTactics({ targetPriority: { ...(member.tactics?.targetPriority ?? {}), [side]: priorities } });
+  useEffect(() => {
+    const closeOnEscape = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <article className="tactics-modal modal-dialog" role="dialog" aria-modal="true" aria-label={`Тактика юніта ${unit.name}`}>
+      <header className="modal-heading"><div className="unit-details-title"><UnitPortrait unitId={unit.id} className="unit-details-portrait" /><div><p className="eyebrow">Тактика юніта</p><h3>{unit.name}</h3><span>Умови перевіряються на початку кожного ходу.</span></div></div><button className="details-close" onClick={onClose} aria-label="Закрити налаштування тактики">×</button></header>
+      <p className="tactics-modal-intro">Юніт виконує першу доступну навичку зі списку, для якої виконані її умови. Порядок навичок не залежить від порядку цілей.</p>
+      <section className="tactics-group">
+        <h4>1. Порядок навичок та умови</h4>
+        <ol className="tactics-priority-list tactical-actions">
+          {skillPriorities.map((actionId, index) => {
+            const action = unit.combat.actions.find((candidate) => candidate.id === actionId);
+            const rule = actionRuleFor(member, action);
+            return <li key={actionId}>
+              <span className="priority-number">{index + 1}</span>
+              <div className="tactical-action-copy"><b>{action.name}</b><small>{actionTacticSummary(action)}</small>
+                <div className="tactical-rule-fields">
+                  <label>Стан союзників<select value={rule.allyHealth} onChange={(event) => updateActionRule(action, { allyHealth: event.target.value })}><option value="any">Не враховувати</option><option value="any_below">Є союзник з HP не вище</option><option value="all_above">Усі союзники мають HP не нижче</option></select></label>
+                  {rule.allyHealth !== 'any' && <label>Поріг HP<input type="number" min="1" max="100" value={rule.healthThreshold} onChange={(event) => updateActionRule(action, { healthThreshold: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} /><span>%</span></label>}
+                  <label>Заряд кристалу<select value={rule.crystal} onChange={(event) => updateActionRule(action, { crystal: event.target.value })}><option value="enough">Достатньо для навички</option><option value="at_least">Не нижче</option><option value="at_most">Не вище</option></select></label>
+                  {rule.crystal !== 'enough' && <label>Поріг заряду<input type="number" min="0" value={rule.crystalValue} onChange={(event) => updateActionRule(action, { crystalValue: Math.max(0, Number(event.target.value) || 0) })} /></label>}
+                </div>
+              </div>
+              <div className="priority-move"><button aria-label={`Підняти ${action.name}`} disabled={index === 0} onClick={() => updateTactics({ actionPriority: movePriorityItem(skillPriorities, actionId, -1) })}>↑</button><button aria-label={`Опустити ${action.name}`} disabled={index === skillPriorities.length - 1} onClick={() => updateTactics({ actionPriority: movePriorityItem(skillPriorities, actionId, 1) })}>↓</button></div>
+            </li>;
+          })}
+        </ol>
+      </section>
+      {canConfigureTargetsFor(unit, 'enemy') && <section className="tactics-group"><h4>2. Пріоритет цілей: вороги</h4><p>Без змін діє власне правило навички; переміщення створює спільний пріоритет для її ворожих цілей.</p><ol className="tactics-priority-list compact">{enemyTargetPriorities.map((priority, index) => <li key={priority}><span className="priority-number">{index + 1}</span><b>{targetPriorityOptions[priority]}</b><div className="priority-move"><button aria-label={`Підняти ${targetPriorityOptions[priority]}`} disabled={index === 0} onClick={() => updateTargetPriorities('enemy', movePriorityItem(enemyTargetPriorities, priority, -1))}>↑</button><button aria-label={`Опустити ${targetPriorityOptions[priority]}`} disabled={index === enemyTargetPriorities.length - 1} onClick={() => updateTargetPriorities('enemy', movePriorityItem(enemyTargetPriorities, priority, 1))}>↓</button></div></li>)}</ol></section>}
+      {canConfigureTargetsFor(unit, 'ally') && <section className="tactics-group"><h4>3. Пріоритет цілей: союзники</h4><p>Без змін діє власне правило навички; переміщення створює спільний пріоритет для її союзних цілей.</p><ol className="tactics-priority-list compact">{allyTargetPriorities.map((priority, index) => <li key={priority}><span className="priority-number">{index + 1}</span><b>{targetPriorityOptions[priority]}</b><div className="priority-move"><button aria-label={`Підняти ${targetPriorityOptions[priority]}`} disabled={index === 0} onClick={() => updateTargetPriorities('ally', movePriorityItem(allyTargetPriorities, priority, -1))}>↑</button><button aria-label={`Опустити ${targetPriorityOptions[priority]}`} disabled={index === allyTargetPriorities.length - 1} onClick={() => updateTargetPriorities('ally', movePriorityItem(allyTargetPriorities, priority, 1))}>↓</button></div></li>)}</ol></section>}
+      <footer className="tactics-modal-footer"><button className="tactics-reset" onClick={() => onChange(createDefaultTactics(unit))}>Відновити ефективні налаштування</button><button className="recruit-buy-button" onClick={onClose}>Готово</button></footer>
+    </article>
+  </div>;
 }
 
 function describeBattleEvent(event) {
@@ -255,6 +319,20 @@ function formationSeed(run, path) {
   return run.seed + run.difficulty * 100 + path.id.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
 }
 
+function normalizeTactics(unit, tactics) {
+  const defaults = createDefaultTactics(unit);
+  if (!tactics) return defaults;
+  const actionPriority = Array.isArray(tactics.actionPriority)
+    ? tactics.actionPriority
+    : typeof tactics.actionPriority === 'string'
+      ? [...unit.combat.actions.filter((action) => action.effectKind === tactics.actionPriority).map((action) => action.id), ...defaults.actionPriority.filter((actionId) => !unit.combat.actions.some((action) => action.effectKind === tactics.actionPriority && action.id === actionId))]
+      : defaults.actionPriority;
+  const targetPriority = typeof tactics.targetPriority === 'string'
+    ? { ...defaults.targetPriority, enemy: [tactics.targetPriority, ...defaults.targetPriority.enemy.filter((priority) => priority !== tactics.targetPriority)] }
+    : { ...defaults.targetPriority, ...(tactics.targetPriority ?? {}) };
+  return { ...defaults, ...tactics, actionPriority, actionRules: { ...defaults.actionRules, ...(tactics.actionRules ?? {}) }, targetPriority };
+}
+
 function loadRun() {
   try {
     const saved = window.localStorage.getItem(runStorageKey);
@@ -263,10 +341,15 @@ function loadRun() {
     const normalized = typeof run.army?.[0] === 'string'
       ? { ...run, army: run.army.map((unitId, index) => ({ instanceId: `${unitId}-${index + 1}`, unitId, hp: null, exp: 0, position: null })), nextUnitNumber: run.army.length + 1 }
       : run;
+    const army = (normalized.army ?? []).map((member) => {
+      const unit = getEmpireUnit(member.unitId);
+      return unit ? { ...member, tactics: normalizeTactics(unit, member.tactics) } : member;
+    });
     const defaults = createRun();
     return {
       ...defaults,
       ...normalized,
+      army,
       lordId: empireLords.some((lord) => lord.id === normalized.lordId) ? normalized.lordId : defaults.lordId
     };
   } catch {
@@ -292,6 +375,7 @@ function App() {
   const [selectedFactionId, setSelectedFactionId] = useState('empire');
   const [hubView, setHubView] = useState('hub');
   const [selectedRecruitUnitId, setSelectedRecruitUnitId] = useState('');
+  const [selectedTacticsMemberId, setSelectedTacticsMemberId] = useState(null);
   const [battlePlayback, setBattlePlayback] = useState(null);
   const paths = createPaths(run.difficulty);
   const lord = getEmpireLord(run.lordId);
@@ -299,6 +383,7 @@ function App() {
   const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
   const playbackEvent = battlePlayback?.battle.events[Math.max(0, battlePlayback.index - 1)] ?? null;
   const playbackState = battlePlayback ? getPlaybackState(battlePlayback) : null;
+  const selectedTacticsMember = run.army.find((member) => member.instanceId === selectedTacticsMemberId) ?? null;
 
   useEffect(() => {
     window.localStorage.setItem(runStorageKey, JSON.stringify(run));
@@ -367,6 +452,7 @@ function App() {
     setGrid(gridFromRun(newRun));
     setLastBattle(null);
     setSelectedMemberId(null);
+    setSelectedTacticsMemberId(null);
     setHubView('hub');
     setScreen('game');
   };
@@ -469,51 +555,17 @@ function App() {
             {run.army.map((member) => {
               const unit = getEmpireUnit(member.unitId);
               const maxHp = createUnitInstance(unit, getBattleLordStats(lord)).maxHp;
-              const skillPriorities = actionPriorityOrder(member, unit);
-              const enemyTargetPriorities = targetPriorityOrder(member, 'enemy');
-              const allyTargetPriorities = targetPriorityOrder(member, 'ally');
-              const updateTactics = (patch) => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: { ...member.tactics, ...patch } }));
-              const updateTargetPriorities = (side, priorities) => {
-                const currentPriorities = member.tactics?.targetPriority;
-                const targetPriority = currentPriorities && typeof currentPriorities === 'object' && !Array.isArray(currentPriorities) ? currentPriorities : {};
-                updateTactics({ targetPriority: { ...targetPriority, [side]: priorities } });
-              };
               return <div className="member-actions" key={member.instanceId}>
                 <UnitPortrait unitId={unit.id} className="army-member-portrait" />
                 <div className="member-heading"><strong>{unit.name}</strong><span>HP {member.hp ?? maxHp}/{maxHp} · EXP {member.exp}</span></div>
-                <section className="tactics" aria-label={`Тактика юніта ${unit.name}`}>
-                  <div className="tactics-heading"><div><b>Тактика</b><span>Порядок умінь і цілей налаштовується окремо.</span></div><button className="tactics-reset" onClick={() => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: undefined }))}>Автоматично</button></div>
-                  <div className="tactics-group">
-                    <h4>1. Пріоритет умінь</h4>
-                    <p>Юніт застосує перше доступне й доречне вміння зі списку.</p>
-                    <ol className="tactics-priority-list">
-                      {skillPriorities.map((actionId, index) => {
-                        const action = unit.combat.actions.find((candidate) => candidate.id === actionId);
-                        return <li key={actionId}><span className="priority-number">{index + 1}</span><div><b>{action.name}</b><small>{actionTacticSummary(action)}</small></div><div className="priority-move"><button aria-label={`Підняти ${action.name}`} disabled={index === 0} onClick={() => updateTactics({ actionPriority: movePriorityItem(skillPriorities, actionId, -1) })}>↑</button><button aria-label={`Опустити ${action.name}`} disabled={index === skillPriorities.length - 1} onClick={() => updateTactics({ actionPriority: movePriorityItem(skillPriorities, actionId, 1) })}>↓</button></div></li>;
-                      })}
-                    </ol>
-                  </div>
-                  {canConfigureTargetsFor(unit, 'enemy') && <div className="tactics-group">
-                    <h4>2. Пріоритет цілей: вороги</h4>
-                    <p>Застосовується лише до умінь, які обирають ворога.</p>
-                    <ol className="tactics-priority-list compact">
-                      {enemyTargetPriorities.map((priority, index) => <li key={priority}><span className="priority-number">{index + 1}</span><b>{targetPriorityOptions[priority]}</b><div className="priority-move"><button aria-label={`Підняти ${targetPriorityOptions[priority]}`} disabled={index === 0} onClick={() => updateTargetPriorities('enemy', movePriorityItem(enemyTargetPriorities, priority, -1))}>↑</button><button aria-label={`Опустити ${targetPriorityOptions[priority]}`} disabled={index === enemyTargetPriorities.length - 1} onClick={() => updateTargetPriorities('enemy', movePriorityItem(enemyTargetPriorities, priority, 1))}>↓</button></div></li>)}
-                    </ol>
-                  </div>}
-                  {canConfigureTargetsFor(unit, 'ally') && <div className="tactics-group">
-                    <h4>3. Пріоритет цілей: союзники</h4>
-                    <p>Застосовується лише до умінь, які обирають союзника.</p>
-                    <ol className="tactics-priority-list compact">
-                      {allyTargetPriorities.map((priority, index) => <li key={priority}><span className="priority-number">{index + 1}</span><b>{targetPriorityOptions[priority]}</b><div className="priority-move"><button aria-label={`Підняти ${targetPriorityOptions[priority]}`} disabled={index === 0} onClick={() => updateTargetPriorities('ally', movePriorityItem(allyTargetPriorities, priority, -1))}>↑</button><button aria-label={`Опустити ${targetPriorityOptions[priority]}`} disabled={index === allyTargetPriorities.length - 1} onClick={() => updateTargetPriorities('ally', movePriorityItem(allyTargetPriorities, priority, 1))}>↓</button></div></li>)}
-                    </ol>
-                  </div>}
-                </section>
+                <button className="open-tactics" onClick={() => setSelectedTacticsMemberId(member.instanceId)}>Налаштувати тактику</button>
                 {member.hp === 0 && <button onClick={() => setRun((current) => reviveUnit(current, member.instanceId, maxHp))}>Воскресити (10)</button>}
                 {member.hp && member.hp < maxHp && <button onClick={() => setRun((current) => healUnit(current, member.instanceId, maxHp))}>Лікувати</button>}
                 {unit.combat.evolutions.map((targetId) => <button disabled={member.exp < (unit.combat.expToUpgrade ?? 100)} key={targetId} onClick={() => setRun((current) => evolveUnit(current, member.instanceId, targetId))}>Еволюція: {getEmpireUnit(targetId).name}</button>)}
               </div>;
             })}
           </div>
+          {selectedTacticsMember && <TacticsModal member={selectedTacticsMember} unit={getEmpireUnit(selectedTacticsMember.unitId)} onClose={() => setSelectedTacticsMemberId(null)} onChange={(tactics) => setRun((current) => updateArmyMember(current, selectedTacticsMember.instanceId, { tactics }))} />}
           <button className="battle-button" disabled={!hasBattleReadyUnit} onClick={() => setHubView('opponents')}>Готово — обрати противника</button>
           </>}
           {hubView === 'opponents' && <>
