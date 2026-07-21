@@ -30,6 +30,7 @@ h1 { font: 700 clamp(3rem, 12vw, 6rem)/.9 Georgia, serif; margin: 0; }
 .lord-detail .lord-stats div:nth-child(4) { display: none; }
 .lord-detail h2 { margin: 0; }
 .lord-detail > div:last-child > p { color: #d2c5b2; }
+.lord-unit-availability { display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(191, 219, 255, .25); border-radius: 9px; background: rgba(15, 19, 86, .3); }.lord-unit-availability > b { color: #fff0a4; font: 700 1rem Georgia, serif; }.lord-unit-availability > div { display: grid; gap: 2px; }.lord-unit-availability small { color: #aecdff; font-size: .7rem; }.lord-unit-availability span { color: #edf4ff; font-size: .78rem; line-height: 1.35; }.lord-unit-availability.compact { margin: 12px 0; padding: 10px; }.lord-unit-availability.compact > b { font-size: .9rem; }.lord-unit-availability.compact span { font-size: .73rem; }
 .lord-portrait { width: 160px; height: 160px; font-size: 5rem; }
 .lord-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin: 14px 0; }
 .lord-stats div, .lord-skill { padding: 8px; border-radius: 7px; background: #302333; }
@@ -351,11 +352,19 @@ button { font-weight: 700; }
 
 /* Unit recruitment portraits are cropped from the shared illustrated roster sheet. */
 .unit-portrait {
-  display: block; flex: 0 0 auto; overflow: hidden;
+  position: relative; display: block; flex: 0 0 auto; overflow: hidden;
   background-image: url('/art/imperial-unit-portraits.png'); background-repeat: no-repeat;
   background-size: 400% 200%; border: 1px solid rgba(255, 243, 177, .72);
   box-shadow: inset 0 0 0 2px rgba(255,255,255,.16), 0 6px 14px rgba(13, 17, 87, .34);
 }
+.unit-portrait[data-tier]::after {
+  position: absolute; right: 2px; bottom: 2px; min-width: 15px; padding: 1px 2px;
+  border: 1px solid rgba(255, 244, 181, .9); border-radius: 4px; color: #2e2156;
+  background: linear-gradient(135deg, #fff6ba, #dfa54b); box-shadow: 0 1px 4px rgba(12, 10, 60, .7);
+  content: attr(data-tier); font-size: 7px; font-weight: 900; line-height: 1.1; text-align: center;
+}
+.unit-portrait.tier-3[data-tier]::after { background: linear-gradient(135deg, #e6f7ff, #74bfe9); }
+.unit-portrait.tier-4[data-tier]::after { color: #fff8d8; border-color: #ffe9a2; background: linear-gradient(135deg, #9c6cff, #4a2a9b); }
 .roster .recruit-card {
   display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: stretch; gap: 11px;
   min-width: 235px; min-height: 105px; padding: 9px;

@@ -14,9 +14,24 @@ const unitPortraitPositions = {
   empire_archer_t1: '0% 0%', empire_infantry_t1: '33.333% 0%', empire_priest_t1: '66.667% 0%', empire_silent_t1: '100% 0%',
   empire_truth_t1: '0% 100%', empire_inquisition_t1: '33.333% 100%', empire_knight_t1: '66.667% 100%'
 };
+const unitLinePortraitPositions = {
+  archer: '0% 0%', infantry: '33.333% 0%', priest: '66.667% 0%', silent: '100% 0%',
+  truth: '0% 100%', inquisition: '33.333% 100%', knight: '66.667% 100%'
+};
+
+function getUnitPortraitPosition(unitId) {
+  if (unitPortraitPositions[unitId]) return unitPortraitPositions[unitId];
+  const line = unitId.match(/^empire_(.+?)_t\d+(?:_|$)/)?.[1];
+  return unitLinePortraitPositions[line] ?? '100% 100%';
+}
+
+function getUnitTier(unitId) {
+  return Number(unitId.match(/_t(\d+)(?:_|$)/)?.[1] ?? 1);
+}
 
 function UnitPortrait({ unitId, className = '' }) {
-  return <span className={`unit-portrait ${className}`} aria-hidden="true" style={{ backgroundImage: `url(${artUrl('imperial-unit-portraits.png')})`, backgroundPosition: unitPortraitPositions[unitId] ?? '100% 100%' }} />;
+  const tier = getUnitTier(unitId);
+  return <span className={`unit-portrait tier-${tier} ${className}`} aria-hidden="true" data-tier={tier > 1 ? `T${tier}` : undefined} style={{ backgroundImage: `url(${artUrl('imperial-unit-portraits.png')})`, backgroundPosition: getUnitPortraitPosition(unitId) }} />;
 }
 
 function battleEventInfo(event) {
@@ -199,6 +214,32 @@ function LordProfileButton({ lord, onClick, label = 'Профіль лорда' 
   </button>;
 }
 
+function getLordUnitAvailability(lord) {
+  const starterUnitIds = new Set(lord.starterUnitIds ?? []);
+  const sharedFactionUnitIds = empireLords
+    .map((candidate) => candidate.starterUnitIds ?? [])
+    .reduce((shared, unitIds) => shared.filter((unitId) => unitIds.includes(unitId)));
+  const unitNames = (unitIds) => unitIds.map((unitId) => getEmpireUnit(unitId)?.name).filter(Boolean).join(', ');
+  return {
+    factionUnits: unitNames(sharedFactionUnitIds),
+    specialUnits: unitNames([...starterUnitIds].filter((unitId) => !sharedFactionUnitIds.includes(unitId))),
+    unlockableUnits: empireUnits
+      .filter((unit) => unit.tier === 1 && !starterUnitIds.has(unit.id))
+      .map((unit) => unit.name)
+      .join(', ')
+  };
+}
+
+function LordUnitAvailability({ lord, compact = false }) {
+  const availability = getLordUnitAvailability(lord);
+  return <section className={`lord-unit-availability ${compact ? 'compact' : ''}`}>
+    <b>Набір юнітів</b>
+    <div><small>Юніти фракції</small><span>{availability.factionUnits}</span></div>
+    <div><small>Особливий стартовий юніт</small><span>{availability.specialUnits}</span></div>
+    <div><small>Відкриття за складні перемоги</small><span>{availability.unlockableUnits}</span></div>
+  </section>;
+}
+
 function LordDetails({ lord, onClose, onSpendAttributePoint, canSpendAttributePoint = false }) {
   const battleLord = getBattleLordStats(lord);
   const skill = getLordSkillEffects(lord);
@@ -235,6 +276,10 @@ function LordDetails({ lord, onClose, onSpendAttributePoint, canSpendAttributePo
         <div className="lord-profile-stats">
           {statItems.map((stat) => <div key={stat.id}><span>{stat.name}</span><b>{formatStat(stat.value)}{stat.suffix ?? ''}</b>{stat.battleValue !== undefined && stat.battleValue !== stat.value && <small>У бою: {formatStat(stat.battleValue)}{stat.suffix ?? ''}</small>}{onSpendAttributePoint && <button className="attribute-upgrade" disabled={!canSpendAttributePoint || (lord.skillPoints ?? 0) < 1} onClick={() => onSpendAttributePoint(stat.id)}>Покращити {stat.increase} · 1 SP</button>}</div>)}
         </div>
+      </section>
+      <section className="lord-details-section">
+        <h3>Доступні юніти</h3>
+        <LordUnitAvailability lord={lord} />
       </section>
       <section className="lord-details-section lord-skill-details">
         <div className="lord-skill-heading"><div><p className="eyebrow">Унікальна навичка · залежить від рівня {skill.level}</p><h3>{isArthur ? 'Удар милосердя' : 'Посилена Віра'}</h3></div><span>Рівень {skill.level}</span></div>
@@ -652,7 +697,7 @@ function App() {
           </div>
           <article className="lord-detail">
             <div className="lord-portrait" aria-label={`Портрет ${selectedLord.name}`}><img src={lordPortraits[selectedLord.id]} alt="" /></div>
-            <div><p className="eyebrow">Лорд Імперії</p><h2>{selectedLord.name}</h2><p>{selectedLord.description}</p><LordProfileButton lord={selectedLord} onClick={() => setShowLordDetails(true)} label="Деталі лорда" /><button className="menu-primary" onClick={startNewRun}>Обрати лорда й почати</button></div>
+            <div><p className="eyebrow">Лорд Імперії</p><h2>{selectedLord.name}</h2><p>{selectedLord.description}</p><LordUnitAvailability lord={selectedLord} compact /><LordProfileButton lord={selectedLord} onClick={() => setShowLordDetails(true)} label="Деталі лорда" /><button className="menu-primary" onClick={startNewRun}>Обрати лорда й почати</button></div>
           </article>
           {showLordDetails && <LordDetails lord={selectedLord} onClose={() => setShowLordDetails(false)} />}
         </section>
