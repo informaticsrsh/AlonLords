@@ -9,7 +9,13 @@ export const empireLords = Object.freeze([
     battlePower: 3,
     vitality: 2,
     crystalVolume: 60,
-    crystalRegenSpeed: 10
+    crystalRegenSpeed: 10,
+    starterUnitIds: [
+      'empire_infantry_t1',
+      'empire_archer_t1',
+      'empire_truth_t1',
+      'empire_priest_t1'
+    ]
   },
   {
     id: 'empire_lord_arthur',
@@ -21,7 +27,13 @@ export const empireLords = Object.freeze([
     battlePower: 4,
     vitality: 3,
     crystalVolume: 55,
-    crystalRegenSpeed: 8
+    crystalRegenSpeed: 8,
+    starterUnitIds: [
+      'empire_infantry_t1',
+      'empire_archer_t1',
+      'empire_truth_t1',
+      'empire_knight_t1'
+    ]
   }
 ]);
 
@@ -100,6 +112,10 @@ export function getLordSkillEffects(lord) {
 
 export function getEmpireLord(id) {
   return empireLords.find((lord) => lord.id === id) ?? null;
+}
+
+export function getLordStarterUnitIds(lordId) {
+  return [...(getEmpireLord(lordId)?.starterUnitIds ?? [])];
 }
 
 export function getBattleLordStats(lord) {

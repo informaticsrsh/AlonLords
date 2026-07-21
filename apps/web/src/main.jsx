@@ -1,10 +1,9 @@
 /* eslint-disable react/prop-types */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRunLord, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
+import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitUnlockProgress, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
-const roster = empireUnits.filter((unit) => unit.tier === 1);
 const runStorageKey = 'empire-lords.run.v1';
 const artUrl = (file) => `${import.meta.env.BASE_URL}art/${file}`;
 const lordPortraits = {
@@ -488,12 +487,13 @@ function loadRun() {
       const unit = getEmpireUnit(member.unitId);
       return unit ? { ...member, tactics: normalizeTactics(unit, member.tactics) } : member;
     });
-    const defaults = createRun();
+    const lordId = empireLords.some((lord) => lord.id === normalized.lordId) ? normalized.lordId : 'empire_lord_henrik';
+    const defaults = createRun({ lordId });
     return {
       ...defaults,
       ...normalized,
       army,
-      lordId: empireLords.some((lord) => lord.id === normalized.lordId) ? normalized.lordId : defaults.lordId
+      lordId
     };
   } catch {
     return createRun();
@@ -524,7 +524,10 @@ function App() {
   const [showLordDetails, setShowLordDetails] = useState(false);
   const paths = createPaths(run.difficulty, run.seed);
   const lord = getRunLord(run);
+  const recruitableUnits = getRecruitableUnits(run);
+  const unitUnlockProgress = getUnitUnlockProgress(run);
   const hasBattleReadyUnit = run.army.some((member) => member.hp !== 0);
+  const hasDeployedArmy = hasBattleReadyUnit && run.army.every((member) => member.hp === 0 || member.position);
   const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
   const leadershipLimit = run.economicLimit + (lord.attributes?.leadership ?? 0);
   const playbackEvent = battlePlayback?.battle.events[Math.max(0, battlePlayback.index - 1)] ?? null;
@@ -551,6 +554,7 @@ function App() {
   };
 
   const resolveRunBattle = () => {
+    if (!run.selectedPath || !hasDeployedArmy) return;
     const battleLord = getBattleLordStats(lord);
     const alliesInBattle = run.army.map((member) => {
       const unit = { ...createUnitInstance(getEmpireUnit(member.unitId), battleLord), id: member.instanceId, unitId: member.unitId, lord: battleLord, position: member.position, tactics: member.tactics };
@@ -679,10 +683,12 @@ function App() {
         {run.phase === 'hub' && <>
           {hubView === 'hub' && <>
           <h3>1. Зберіть армію</h3>
-          <p>Перегляньте ключові характеристики перед наймом. «Деталі» покаже повний розрахунок кожного значення для вашого лорда.</p>
+          <p>Перегляньте ключові характеристики перед наймом. «Деталі» покаже повний розрахунок кожного значення для вашого лорда. За кожні 3 перемоги на Небезпечному перевалі відкривається один новий базовий юніт.</p>
+          {unitUnlockProgress.remainingUnitIds.length > 0 && <small>До наступного відкриття: {unitUnlockProgress.victoriesUntilNextUnlock} {unitUnlockProgress.victoriesUntilNextUnlock === 1 ? 'перемога' : 'перемоги'} на Небезпечному перевалі · ще доступно {unitUnlockProgress.remainingUnitIds.length}.</small>}
+          {unitUnlockProgress.remainingUnitIds.length === 0 && <small>Усі доступні базові юніти вже відкриті.</small>}
           {selectedRecruitUnitId && <UnitDetails unit={getEmpireUnit(selectedRecruitUnitId)} lord={lord} onClose={() => setSelectedRecruitUnitId('')} />}
           <div className="roster">
-            {roster.map((unit) => {
+            {recruitableUnits.map((unit) => {
               const battleLord = getBattleLordStats(lord);
               const instance = createUnitInstance(unit, battleLord);
               const mainAction = unit.combat.actions.find((action) => action.effectKind === 'damage') ?? unit.combat.actions[0];
@@ -738,17 +744,17 @@ function App() {
             </div>
           </section>
           <h3>3. Оберіть маршрут і почніть бій</h3>
-          <p>Виберіть одного з трьох противників. Перед боєм можете змінити розстановку вище.</p>
+          <p>{hasDeployedArmy ? 'Виберіть одного з трьох противників. Перед боєм можете змінити розстановку вище.' : 'Спершу розставте всіх живих юнітів на полі — після цього стане доступним вибір противника.'}</p>
           <div className="roster">
             {paths.map((path) => {
               const enemyArmy = generateEnemyArmy({ pathId: path.id, difficulty: run.difficulty, seed: formationSeed(run, path) });
-              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {formatPathReward(path.reward)} · загроза {path.threat} →</em></button>;
+              return <button className="enemy-choice" key={path.id} disabled={!hasDeployedArmy} title={!hasDeployedArmy ? 'Спершу розставте всіх живих юнітів' : undefined} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {formatPathReward(path.reward)} · загроза {path.threat} →</em></button>;
             })}
           </div>
           <button className="reset-button" onClick={() => setHubView('hub')}>← Повернутися до Hub</button>
           </>}
         </>}
-        {run.phase === 'battle' && !battlePlayback && <section className="battle-ready"><h3>Противник обраний: {run.selectedPath.name}</h3><p>Загроза {run.selectedPath.threat}. Армія готова — натисніть, щоб розпочати автобій.</p><button className="battle-button" onClick={resolveRunBattle}>В бій</button></section>}
+        {run.phase === 'battle' && !battlePlayback && <section className="battle-ready"><h3>Противник обраний: {run.selectedPath.name}</h3><p>{hasDeployedArmy ? `Загроза ${run.selectedPath.threat}. Армія готова — натисніть, щоб розпочати автобій.` : 'Армія не розставлена, тому бій не можна розпочати.'}</p><button className="battle-button" disabled={!hasDeployedArmy} onClick={resolveRunBattle}>В бій</button></section>}
         {battlePlayback && <section className="battle-playback" aria-live="polite">
           <div className="battle-arena-hud">
             <div className="arena-team ally"><span>✦</span><b>Імперія</b><small>Віра</small><i><em style={{ width: `${Math.max(0, Math.min(100, playbackState.faith))}%` }} /></i><strong>{Math.round(playbackState.faith)}</strong></div>
@@ -775,6 +781,7 @@ function App() {
           <h3>{lastBattle.victory ? 'Перемога' : 'Поразка'} · {lastBattle.rounds} раундів</h3>
           <p className="battle-resources">Віра: {lastBattle.faith}/100 · Сила кристала: {Math.round(lastBattle.crystal.mana)}/{lastBattle.crystal.manaMax}</p>
           {lastBattle.victory && <p>Нагорода: {formatPathReward(lastBattle.path.reward)}.</p>}
+          {lastBattle.victory && run.lastUnlockedUnitId && <p>Відкрито для набору: <b>{getEmpireUnit(run.lastUnlockedUnitId)?.name}</b>.</p>}
           <div className="battle-state" aria-label="Фінальний стан бою">
             <div><h4>Імперія</h4>{lastBattle.allies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} />)}</div>
             <div><h4>Рейдери</h4>{lastBattle.enemies.map((unit) => <BattleUnitCard key={unit.id} unit={unit} />)}</div>

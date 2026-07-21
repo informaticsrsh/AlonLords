@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLordExperience, applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRunLord, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources, spendLordAttributePoint } from '../src/index.js';
+import { addLordExperience, applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitUnlockProgress, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources, spendLordAttributePoint } from '../src/index.js';
 
 const allies = [
   { id: 'guard', maxHp: 24, attack: 7, critChance: 0.2 }
@@ -411,6 +411,39 @@ describe('run loop', () => {
     expect(recruited.army).toMatchObject([{ unitId: 'empire_archer_t1', hp: null, exp: 0, position: null }]);
     expect(inBattle.phase).toBe('battle');
     expect(completed).toMatchObject({ phase: 'hub', difficulty: 2, gold: 23 });
+  });
+
+  it('limits recruitment to each lord’s starting roster', () => {
+    const henrik = createRun({ lordId: 'empire_lord_henrik', seed: 1 });
+    const arthur = createRun({ lordId: 'empire_lord_arthur', seed: 1 });
+
+    expect(getRecruitableUnits(henrik).map((unit) => unit.id).sort()).toEqual([
+      'empire_archer_t1', 'empire_infantry_t1', 'empire_priest_t1', 'empire_truth_t1'
+    ]);
+    expect(getRecruitableUnits(arthur).map((unit) => unit.id).sort()).toEqual([
+      'empire_archer_t1', 'empire_infantry_t1', 'empire_knight_t1', 'empire_truth_t1'
+    ]);
+    expect(recruitUnit(henrik, 'empire_knight_t1')).toBe(henrik);
+    expect(recruitUnit(arthur, 'empire_priest_t1')).toBe(arthur);
+  });
+
+  it('unlocks one remaining base unit after every third risky victory', () => {
+    let run = createRun({ lordId: 'empire_lord_henrik', seed: 42 });
+    const riskyPath = { id: 'risky' };
+    const safePath = { id: 'safe' };
+
+    for (let index = 0; index < 2; index += 1) run = finishBattle({ ...run, selectedPath: riskyPath }, { victory: true });
+    expect(getUnitUnlockProgress(run)).toMatchObject({ hardBattleVictories: 2, victoriesUntilNextUnlock: 1 });
+    expect(getRecruitableUnits(run)).toHaveLength(4);
+
+    run = finishBattle({ ...run, selectedPath: riskyPath }, { victory: true });
+    expect(run).toMatchObject({ hardBattleVictories: 3, lastUnlockedUnitId: expect.any(String) });
+    expect(getRecruitableUnits(run)).toHaveLength(5);
+    expect(getUnitUnlockProgress(run).remainingUnitIds).toHaveLength(2);
+
+    const afterSafeVictory = finishBattle({ ...run, selectedPath: safePath }, { victory: true });
+    expect(afterSafeVictory.hardBattleVictories).toBe(3);
+    expect(afterSafeVictory.lastUnlockedUnitId).toBeNull();
   });
 
   it('heals, revives, and evolves individual army members only in Hub', () => {

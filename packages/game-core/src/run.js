@@ -1,5 +1,5 @@
 import { empireUnits, getEmpireUnit } from './catalog.js';
-import { addLordExperience, createLordProgress, experienceToNextLordLevel, getEmpireLord, LORD_ATTRIBUTE_UPGRADES, normalizeLordProgress } from './lords.js';
+import { addLordExperience, createLordProgress, experienceToNextLordLevel, getEmpireLord, getLordStarterUnitIds, LORD_ATTRIBUTE_UPGRADES, normalizeLordProgress } from './lords.js';
 
 const enemyProfiles = {
   safe: { leadership: 4, growth: 1, maxUnits: 2, label: 'Легкий загін' },
@@ -13,6 +13,8 @@ const rewardDefinitions = [
   { type: 'skill_points', multiplier: 0.05 },
   { type: 'mines', multiplier: 0.08 }
 ];
+
+export const HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK = 3;
 
 function createEnemyRng(seed) {
   let state = Number(seed) >>> 0;
@@ -38,6 +40,51 @@ function createPathReward(leadershipBudget, rng) {
     // Skill points and mines cannot be awarded as zero-value rewards.
     .filter((reward) => reward.type === 'gold' || reward.type === 'lord_experience' || reward.amount > 0);
   return availableRewards[Math.floor(rng() * availableRewards.length)];
+}
+
+function getLordStarterUnits(run) {
+  return getLordStarterUnitIds(run.lordId).filter((unitId) => getEmpireUnit(unitId));
+}
+
+function getUnlockableUnitIds(run) {
+  const starterUnitIds = new Set(getLordStarterUnits(run));
+  // The current recruitment roster consists of tier-1 units. Higher tiers are
+  // obtained through unit evolution, rather than recruited directly.
+  return empireUnits
+    .filter((unit) => unit.tier === 1 && !starterUnitIds.has(unit.id))
+    .map((unit) => unit.id);
+}
+
+function getUnlockedUnitIds(run) {
+  const starterUnitIds = getLordStarterUnits(run);
+  const allowedUnitIds = new Set([...starterUnitIds, ...getUnlockableUnitIds(run)]);
+  const savedUnitIds = Array.isArray(run.unlockedUnitIds) ? run.unlockedUnitIds : starterUnitIds;
+  return [...new Set([...starterUnitIds, ...savedUnitIds])].filter((unitId) => allowedUnitIds.has(unitId));
+}
+
+export function getRecruitableUnits(run) {
+  const unlockedUnitIds = new Set(getUnlockedUnitIds(run));
+  return empireUnits.filter((unit) => unit.tier === 1 && unlockedUnitIds.has(unit.id));
+}
+
+export function getUnitUnlockProgress(run) {
+  const unlockedUnitIds = new Set(getUnlockedUnitIds(run));
+  const remainingUnitIds = getUnlockableUnitIds(run).filter((unitId) => !unlockedUnitIds.has(unitId));
+  const hardBattleVictories = Math.max(0, Number(run.hardBattleVictories) || 0);
+  return {
+    hardBattleVictories,
+    victoriesUntilNextUnlock: remainingUnitIds.length === 0
+      ? 0
+      : HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK - (hardBattleVictories % HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK),
+    remainingUnitIds
+  };
+}
+
+function selectUnitUnlock(run, hardBattleVictories, unlockedUnitIds) {
+  const candidates = getUnlockableUnitIds(run).filter((unitId) => !unlockedUnitIds.includes(unitId));
+  if (candidates.length === 0 || hardBattleVictories % HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK !== 0) return null;
+  const rng = createEnemyRng(Number(run.seed) + hardBattleVictories * 7919);
+  return candidates[Math.floor(rng() * candidates.length)];
 }
 
 function shuffleEnemyCandidates(candidates, rng) {
@@ -199,6 +246,9 @@ export function createRun({ lordId = 'empire_lord_henrik', seed = createRunSeed(
     difficulty: 1,
     economicLimit: lord.leadership,
     mines: 0,
+    unlockedUnitIds: getLordStarterUnitIds(lord.id),
+    hardBattleVictories: 0,
+    lastUnlockedUnitId: null,
     army: [],
     nextUnitNumber: 1,
     phase: 'hub'
@@ -243,7 +293,7 @@ function leadershipLimit(run) {
 export function recruitUnit(run, unitId) {
   if (run.phase !== 'hub') return run;
   const unit = getEmpireUnit(unitId);
-  if (!unit?.combat) return run;
+  if (!unit?.combat || !getUnlockedUnitIds(run).includes(unitId)) return run;
   const cost = unit.combat.leadershipCost;
   const leadershipUsed = run.army.reduce((sum, member) => sum + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
   if (run.gold < cost || leadershipUsed + cost > leadershipLimit(run)) return run;
@@ -294,7 +344,7 @@ export function evolveUnit(run, instanceId, targetUnitId) {
 
 export function choosePath(run, path) {
   if (run.phase !== 'hub' || run.army.length === 0 || run.army.every((member) => member.hp === 0)) return run;
-  return { ...run, phase: 'battle', selectedPath: path };
+  return { ...run, phase: 'battle', selectedPath: path, lastUnlockedUnitId: null };
 }
 
 export function finishBattle(run, { victory, army = run.army }) {
@@ -310,6 +360,12 @@ export function finishBattle(run, { victory, army = run.army }) {
   const lordProgress = victory
     ? { ...experiencedLordProgress, skillPoints: experiencedLordProgress.skillPoints + (rewards.skillPointReward ?? 0) }
     : experiencedLordProgress;
+  const isHardBattleVictory = victory && rewards.id === 'risky';
+  const hardBattleVictories = Math.max(0, Number(run.hardBattleVictories) || 0) + (isHardBattleVictory ? 1 : 0);
+  const unlockedUnitIds = getUnlockedUnitIds(run);
+  const lastUnlockedUnitId = isHardBattleVictory
+    ? selectUnitUnlock(run, hardBattleVictories, unlockedUnitIds)
+    : null;
   return {
     ...run,
     lives,
@@ -317,6 +373,9 @@ export function finishBattle(run, { victory, army = run.army }) {
     gold: victory ? run.gold + (rewards.goldReward ?? 0) + run.mines : run.gold,
     economicLimit: run.economicLimit + (rewards.economicLimitReward ?? 0),
     mines: run.mines + (rewards.mineReward ?? 0),
+    unlockedUnitIds: lastUnlockedUnitId ? [...unlockedUnitIds, lastUnlockedUnitId] : unlockedUnitIds,
+    hardBattleVictories,
+    lastUnlockedUnitId,
     army: experiencedArmy,
     lordProgress,
     phase: lives > 0 ? 'hub' : 'game_over',
