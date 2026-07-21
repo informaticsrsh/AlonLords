@@ -358,16 +358,61 @@ button { font-weight: 700; }
   display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: stretch; gap: 11px;
   min-width: 235px; min-height: 105px; padding: 9px;
 }
-.recruit-portrait { width: 74px; min-height: 86px; border-radius: 9px; }
+.recruit-portrait { width: 74px; height: 74px; min-height: 0; aspect-ratio: 1; align-self: center; border-radius: 9px; }
 .recruit-card-copy { display: grid; align-content: center; gap: 4px; min-width: 0; text-align: left; }
 .recruit-card-copy > span { color: #cfdcff; font-size: .74rem; text-transform: uppercase; letter-spacing: .07em; }
 .recruit-card-copy small { margin-top: 4px; }
 .roster .recruit-card:hover .recruit-portrait { border-color: #fff5bb; box-shadow: 0 0 0 2px rgba(255, 222, 115, .25), 0 7px 18px rgba(20, 19, 96, .45); }
 .member-actions { grid-template-columns: 52px minmax(0, 1fr); column-gap: 10px; }
-.army-member-portrait { grid-row: span 3; width: 52px; min-height: 66px; border-radius: 8px; }
+.army-member-portrait { grid-row: span 3; width: 52px; height: 52px; min-height: 0; aspect-ratio: 1; align-self: start; border-radius: 8px; }
 .member-actions .tactics, .member-actions > button { grid-column: 2; }
 @media (max-width: 700px) {
   .roster .recruit-card { min-width: min(100%, 260px); }
+}
+
+/* Recruitment cards expose the choice and the cost before the player commits. */
+.campaign-page .roster .recruit-card {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-width: 275px;
+  min-height: 132px;
+  margin: 0;
+  padding: 10px;
+  text-align: left;
+}
+.recruit-card-copy { gap: 3px; }
+.recruit-stats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.recruit-stats span {
+  padding: 3px 5px;
+  border: 1px solid rgba(214, 230, 255, .22);
+  border-radius: 4px;
+  color: #dbe8ff;
+  background: rgba(17, 20, 94, .28);
+  font-size: .65rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.recruit-stats strong { margin-left: 2px; color: #fff0a4; }
+.recruit-card-actions { display: grid; grid-column: 1 / -1; grid-template-columns: 1fr 1.12fr; gap: 7px; margin-top: 7px; }
+.roster .recruit-card .recruit-card-actions button { padding: 7px 8px; border-radius: 6px; font-size: .8rem; }
+.roster .recruit-card .recruit-details-button { border-color: rgba(204, 221, 255, .6); background: rgba(30, 33, 111, .75); color: #eef5ff; }
+.roster .recruit-card .recruit-buy-button { border-color: #ffe987; background: linear-gradient(135deg, #ffcd63, #e79335); color: #312153; box-shadow: inset 0 1px rgba(255,255,255,.38); }
+.roster .recruit-card .recruit-buy-button:disabled { color: #d7d9eb; border-color: rgba(202, 212, 255, .25); background: rgba(52, 51, 112, .65); }
+.unit-details { display: block; flex-basis: 100%; }
+.formula-section { padding: 11px; border: 1px solid rgba(255, 225, 117, .36); border-radius: 8px; background: rgba(28, 26, 99, .3); }
+.formula-intro { margin: 0 0 9px; color: #d7e4ff; font-size: .78rem; line-height: 1.4; }
+.formula-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 7px; }
+.formula-list > div { display: grid; gap: 3px; padding: 8px; border-radius: 6px; background: rgba(10, 15, 74, .4); }
+.formula-list b, .unit-abilities strong { color: #fff0a4; font-size: .82rem; }
+.formula-list span, .formula-list small, .unit-abilities .formula { color: #cfddff; font-size: .76rem; line-height: 1.35; }
+.formula-list .lord-contribution { border-left: 2px solid rgba(255, 225, 117, .65); }
+.unit-abilities > div { gap: 5px; }
+.unit-abilities > div > span { line-height: 1.35; }
+.unit-abilities > div > small:not(.formula) { margin-top: 1px; }
+@media (max-width: 700px) {
+  .campaign-page .roster .recruit-card { min-width: min(100%, 330px); }
+  .recruit-card-actions { grid-template-columns: 1fr; }
 }
 
 /* Battle arena: an event-focused game board rather than a technical grid. */
@@ -462,4 +507,34 @@ button { font-weight: 700; }
 @media (max-width: 760px) {
   .battle-action-banner { grid-template-columns: minmax(0, 1fr) 85px minmax(0, 1fr); gap: 4px; }
   .battle-action-unit { gap: 4px; font-size: .58rem; }.battle-action-unit .unit-portrait, .battle-action-icon { width: 28px; height: 28px; font-size: .8rem; }.battle-action-center { padding: 2px 4px; }.battle-action-center b { font-size: .5rem; }.battle-action-center strong { font-size: 1rem; }
+}
+
+/* Tactics use ordered decisions: skill selection and target selection are independent. */
+.member-actions .tactics {
+  display: grid;
+  grid-column: 2;
+  gap: 9px;
+  margin: 0;
+  color: #e6efff;
+}
+.tactics-heading { display: flex; justify-content: space-between; align-items: start; gap: 9px; }
+.tactics-heading > div { display: grid; gap: 2px; }
+.tactics-heading b, .tactics-group h4 { color: #fff0a4; font-family: Georgia, 'Times New Roman', serif; }
+.tactics-heading span, .tactics-group p, .tactics-priority-list small { color: #cbd9ff; font-size: .72rem; line-height: 1.35; }
+.member-actions .tactics .tactics-reset { margin: 0; padding: 4px 7px; color: #ebf3ff; border-color: rgba(199, 219, 255, .52); background: rgba(39, 42, 125, .72); font-size: .7rem; white-space: nowrap; }
+.tactics-group { padding: 8px; border: 1px solid rgba(202, 222, 255, .2); border-radius: 8px; background: rgba(15, 20, 83, .28); }
+.tactics-group h4, .tactics-group p { margin: 0; }
+.tactics-group p { margin-top: 3px; }
+.tactics-priority-list { display: grid; gap: 5px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tactics-priority-list li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px; border-radius: 6px; background: rgba(60, 72, 166, .35); }
+.tactics-priority-list li > div:not(.priority-move) { display: grid; gap: 1px; min-width: 0; }
+.tactics-priority-list b { color: #f8faff; font-size: .79rem; }
+.priority-number { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; color: #30275e; background: #ffe58d; font-size: .7rem; font-weight: 900; }
+.priority-move { display: flex; gap: 3px; }
+.member-actions .tactics .priority-move button { min-width: 25px; margin: 0; padding: 2px 6px; color: #f5f8ff; border-color: rgba(204, 221, 255, .42); background: rgba(34, 38, 117, .78); line-height: 1.1; }
+.member-actions .tactics .priority-move button:disabled { opacity: .3; }
+.tactics-priority-list.compact li { grid-template-columns: 20px minmax(0, 1fr) auto; }
+@media (max-width: 600px) {
+  .member-actions .tactics { grid-column: 1 / -1; }
+  .tactics-heading { align-items: center; }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, simulateBattle, simulateBattleSeries, spendActionResources } from '../src/index.js';
+import { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources } from '../src/index.js';
 
 const allies = [
   { id: 'guard', maxHp: 24, attack: 7, critChance: 0.2 }
@@ -241,11 +241,24 @@ describe('Empire unit catalog', () => {
   it('uses tactical target priorities and skips controlled units', () => {
     const action = { id: 'hit', effectKind: 'damage', rangeType: 'ranged', formula: { base: 1, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
     const targets = [{ id: 'healthy', hp: 20 }, { id: 'weak', hp: 5 }];
-    expect(resolveAction(action, {}, targets, Math.random, { tactics: { targetPriority: 'lowest_hp' } }).targets[0].id).toBe('weak');
+    expect(resolveAction(action, {}, targets, Math.random, { tactics: { targetPriority: { enemy: ['lowest_hp', 'nearest'] } } }).targets[0].id).toBe('weak');
 
     const controlled = { id: 'controlled', maxHp: 10, attack: 10, effects: [{ id: 'stun', kind: 'control', duration: null }] };
     const result = simulateBattle({ allies: [controlled], enemies: [{ id: 'enemy', maxHp: 10, attack: 0 }], maxRounds: 1 });
     expect(result.events).toContainEqual(expect.objectContaining({ type: 'control_skip', unitId: 'controlled' }));
+  });
+
+  it('keeps ordered skill use independent from ally target priorities', () => {
+    const strike = { id: 'strike', effectKind: 'damage', rangeType: 'ranged', formula: { base: 5, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const heal = { id: 'heal', effectKind: 'heal', rangeType: 'ranged', formula: { base: 5, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'ally', selection: 'lowest_hp', count: 1 } };
+    const unit = { actions: [strike, heal], tactics: { actionPriority: ['heal', 'strike'] } };
+    const injured = { id: 'injured', hp: 4, maxHp: 10, position: { row: 0, column: 2 } };
+    const nearby = { id: 'nearby', hp: 8, maxHp: 10, position: { row: 0, column: 0 } };
+    const enemy = { id: 'enemy', hp: 10, maxHp: 10 };
+
+    expect(selectAutomaticAction(unit, [injured, nearby], [enemy]).id).toBe('heal');
+    expect(selectAutomaticAction(unit, [{ ...injured, hp: 10 }, { ...nearby, hp: 10 }], [enemy]).id).toBe('strike');
+    expect(resolveAction(heal, {}, [injured, nearby], Math.random, { position: { row: 0, column: 0 }, tactics: { targetPriority: { ally: ['nearest', 'lowest_hp'] } } }).targets[0].id).toBe('nearby');
   });
 
   it('reacts to melee hits with counterattacks and reflects damage from an active shield', () => {

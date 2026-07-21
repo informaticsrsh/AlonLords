@@ -153,9 +153,7 @@ function includeNeighbors(candidates, targets, action) {
 }
 
 export function resolveAction(action, lord, candidates, rng, attacker) {
-  const targetRule = action.targetRule.side === 'enemy' && attacker?.tactics?.targetPriority
-    ? { ...action.targetRule, selection: attacker.tactics.targetPriority }
-    : action.targetRule;
+  const targetRule = getTacticalTargetRule(action, attacker);
   const primaryTargets = selectTargets(candidates, targetRule, rng, attacker, action.rangeType);
   return {
     actionId: action.id,
@@ -163,6 +161,21 @@ export function resolveAction(action, lord, candidates, rng, attacker) {
     amount: evaluateFormula(action.formula, lord),
     targets: includeNeighbors(candidates, expandAreaTargets(candidates, primaryTargets, action), action)
   };
+}
+
+function getTacticalTargetRule(action, attacker) {
+  const rule = action.targetRule;
+  // Self-targeting and resurrection have gameplay-specific target rules and
+  // must not be replaced by a general target preference.
+  if (!rule || rule.selection === 'self' || rule.selection === 'corpse_of_dead_ally') return rule;
+
+  const configured = attacker?.tactics?.targetPriority;
+  const priorities = Array.isArray(configured?.[rule.side])
+    ? configured[rule.side]
+    // Keep saved runs from the earlier single enemy-target setting working.
+    : rule.side === 'enemy' && typeof configured === 'string' ? [configured] : [];
+  const selection = priorities.find((priority) => ['nearest', 'lowest_hp', 'highest_threat', 'random'].includes(priority));
+  return selection ? { ...rule, selection } : rule;
 }
 
 export function applyActionEffect(action, lord, candidates, rng, attacker, guardians = candidates) {
@@ -256,17 +269,41 @@ export function isActionUsable(action, unit, resource = unit) {
   return cooldown <= 0 && (action.usesPerBattle === undefined || uses < action.usesPerBattle) && (resource.mana ?? Infinity) >= (action.manaCost ?? 0);
 }
 
-export function selectAutomaticAction(unit, allies = [], enemies = [], resource = unit) {
-  const actions = (unit.actions ?? []).filter((action) => isActionUsable(action, unit, resource)).filter((action) => {
-    if (!action.condition) return true;
-    const candidates = action.targetRule.side === 'ally' ? allies : enemies;
-    return candidates.some((target) => {
-      const value = action.condition.field === 'hpPct' ? target.hp / target.maxHp : target[action.condition.field];
-      return action.condition.operator === 'lt' ? value < action.condition.value : value > action.condition.value;
-    });
+function hasMeaningfulTarget(action, unit, allies, enemies) {
+  const rule = action.targetRule ?? {};
+  if (rule.selection === 'self' || rule.side === 'self') return true;
+  const candidates = rule.side === 'ally' ? allies : enemies;
+  if (rule.selection === 'corpse_of_dead_ally') return candidates.some((target) => target.hp <= 0 && !(target.effects ?? []).some((effect) => effect.id === 'no_resurrection'));
+  const targets = getAccessibleTargets(candidates, unit, action.rangeType);
+  if (action.effectKind === 'heal') return targets.some((target) => target.hp > 0 && target.hp < target.maxHp);
+  return targets.length > 0;
+}
+
+function meetsActionCondition(action, allies, enemies) {
+  if (!action.condition) return true;
+  const candidates = action.targetRule.side === 'ally' ? allies : enemies;
+  return candidates.some((target) => {
+    const value = action.condition.field === 'hpPct' ? target.hp / target.maxHp : target[action.condition.field];
+    return action.condition.operator === 'lt' ? value < action.condition.value : value > action.condition.value;
   });
-  const preferred = actions.find((action) => action.effectKind === unit.tactics?.actionPriority);
-  if (preferred) return preferred;
+}
+
+export function selectAutomaticAction(unit, allies = [], enemies = [], resource = unit) {
+  const actions = (unit.actions ?? [])
+    .filter((action) => isActionUsable(action, unit, resource))
+    .filter((action) => meetsActionCondition(action, allies, enemies));
+  const configuredPriorities = unit.tactics?.actionPriority;
+  if (Array.isArray(configuredPriorities)) {
+    for (const actionId of configuredPriorities) {
+      const action = actions.find((candidate) => candidate.id === actionId);
+      if (action && hasMeaningfulTarget(action, unit, allies, enemies)) return action;
+    }
+  }
+  // Compatibility with saves created before skills received their own order.
+  if (typeof configuredPriorities === 'string') {
+    const preferred = actions.find((action) => action.effectKind === configuredPriorities);
+    if (preferred) return preferred;
+  }
   const revive = actions.find((action) => action.targetRule.selection === 'corpse_of_dead_ally');
   if (revive && allies.some((ally) => ally.hp <= 0 && !(ally.effects ?? []).some((effect) => effect.id === 'no_resurrection'))) return revive;
   const heal = actions.find((action) => action.effectKind === 'heal');

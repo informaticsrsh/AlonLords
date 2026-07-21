@@ -50,6 +50,81 @@ function getActionValue(action, lord) {
   return (base + (lord?.[lordStat] ?? 0) * multiplier) * resultMultiplier;
 }
 
+const lordStatNames = {
+  vitality: 'Витривалість',
+  battlePower: 'Бойова сила',
+  crystalRegenSpeed: 'Регенерація кристалу',
+  crystalVolume: 'Сила кристалу',
+  leadership: 'Лідерство',
+  tactics: 'Тактика'
+};
+const roleNames = { melee: 'Ближній бій', ranged: 'Дальній бій', caster: 'Заклинач' };
+const effectNames = { damage: 'Шкода', heal: 'Зцілення', buff: 'Посилення', debuff: 'Послаблення', control: 'Контроль' };
+
+function getFormulaBreakdown(formula, lord) {
+  if (!formula) return null;
+  const { base = 0, lordStat, multiplier = 0, resultMultiplier = 1 } = formula;
+  const statValue = lord?.[lordStat] ?? 0;
+  const subtotal = base + statValue * multiplier;
+  const result = subtotal * resultMultiplier;
+  const statName = lordStatNames[lordStat] ?? lordStat;
+  const expression = `${formatStat(base)} + ${formatStat(multiplier)} × ${statName} (${formatStat(statValue)})`;
+  return {
+    result,
+    statName,
+    statValue,
+    calculation: resultMultiplier === 1
+      ? `${expression} = ${formatStat(result)}`
+      : `(${expression}) × ${formatStat(resultMultiplier)} = ${formatStat(result)}`
+  };
+}
+
+function actionTargetDescription(action) {
+  const side = action.targetRule?.side === 'ally' ? 'союзника' : 'ворога';
+  const selection = { nearest: 'найближчого', lowest_hp: 'з найменшим здоров’ям', highest_threat: 'з найбільшою загрозою', random: 'випадкового', self: 'себе' }[action.targetRule?.selection] ?? 'ціль';
+  const count = action.targetRule?.count ?? 1;
+  return action.targetRule?.selection === 'self' ? 'Ціль: себе' : `Ціль: ${count > 1 ? `${count} ${side === 'ворога' ? 'ворогів' : 'союзників'}` : `${selection} ${side}`}`;
+}
+
+const targetPriorityOptions = {
+  nearest: 'Найближча доступна',
+  lowest_hp: 'Найслабша (найменше HP)',
+  highest_threat: 'Найнебезпечніша (загроза)',
+  random: 'Випадкова'
+};
+
+function movePriorityItem(items, item, direction) {
+  const index = items.indexOf(item);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= items.length) return items;
+  const next = [...items];
+  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  return next;
+}
+
+function actionPriorityOrder(member, unit) {
+  const saved = Array.isArray(member.tactics?.actionPriority) ? member.tactics.actionPriority : [];
+  const validSaved = saved.filter((actionId) => unit.combat.actions.some((action) => action.id === actionId));
+  return [...validSaved, ...unit.combat.actions.map((action) => action.id).filter((actionId) => !validSaved.includes(actionId))];
+}
+
+function targetPriorityOrder(member, side) {
+  const saved = member.tactics?.targetPriority;
+  const validSaved = Array.isArray(saved?.[side]) ? saved[side].filter((priority) => targetPriorityOptions[priority]) : [];
+  return [...validSaved, ...Object.keys(targetPriorityOptions).filter((priority) => !validSaved.includes(priority))];
+}
+
+function canConfigureTargetsFor(unit, side) {
+  return unit.combat.actions.some((action) => action.targetRule?.side === side && !['self', 'corpse_of_dead_ally'].includes(action.targetRule.selection));
+}
+
+function actionTacticSummary(action) {
+  const target = action.targetRule?.selection === 'self' ? 'на себе'
+    : action.targetRule?.selection === 'corpse_of_dead_ally' ? 'на полеглого союзника'
+      : action.targetRule?.side === 'ally' ? 'на союзника' : 'на ворога';
+  return `${effectNames[action.effectKind] ?? action.effectKind} ${target}${action.manaCost ? ` · ${action.manaCost} кристала` : ''}${action.cooldown ? ` · відновлення ${action.cooldown}` : ''}`;
+}
+
 function LordCrystalStats({ lord, className = '' }) {
   return <dl className={`crystal-stats ${className}`}>
     <div><dt>{'\u0421\u0438\u043b\u0430 \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u0443'}</dt><dd>{lord.crystalVolume}</dd></div>
@@ -58,7 +133,10 @@ function LordCrystalStats({ lord, className = '' }) {
 }
 
 function UnitDetails({ unit, lord, onClose }) {
-  const instance = createUnitInstance(unit, getBattleLordStats(lord));
+  const battleLord = getBattleLordStats(lord);
+  const instance = createUnitInstance(unit, battleLord);
+  const hpBreakdown = getFormulaBreakdown(unit.combat.hpFormula, battleLord);
+  const affectedStats = [...new Set([unit.combat.hpFormula?.lordStat, ...unit.combat.actions.map((action) => action.formula?.lordStat)].filter(Boolean))];
   return <article className="unit-details" aria-live="polite">
     <div className="unit-details-heading">
       <div><p className="eyebrow">{'\u0414\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}</p><h3>{unit.name}</h3></div>
@@ -68,15 +146,31 @@ function UnitDetails({ unit, lord, onClose }) {
       <div><dt>{'\u0417\u0434\u043e\u0440\u043e\u0432\u2019\u044f'}</dt><dd>{formatStat(instance.maxHp)}</dd></div>
       <div><dt>{'\u0428\u0432\u0438\u0434\u043a\u0456\u0441\u0442\u044c \u0430\u0442\u0430\u043a\u0438'}</dt><dd>{unit.combat.attackSpeed}</dd></div>
       <div><dt>{'\u041b\u0456\u0434\u0435\u0440\u0441\u0442\u0432\u043e'}</dt><dd>{unit.combat.leadershipCost}</dd></div>
-      <div><dt>{'\u0420\u043e\u043b\u044c'}</dt><dd>{unit.role}</dd></div>
+      <div><dt>{'\u0420\u043e\u043b\u044c'}</dt><dd>{roleNames[unit.role] ?? unit.role}</dd></div>
       <div><dt>{'\u0420\u043e\u0437\u043c\u0456\u0440'}</dt><dd>{unit.gridFootprint.rows}×{unit.gridFootprint.columns}</dd></div>
     </dl>
+    <section className="unit-details-section formula-section">
+      <h4>Звідки беруться характеристики</h4>
+      <p className="formula-intro">Значення нижче розраховано для лорда «{lord.name}». У бою використовуються його поточні бойові параметри.</p>
+      <div className="formula-list">
+        <div><b>Здоров’я: {formatStat(instance.maxHp)}</b><span>{hpBreakdown.calculation}</span><small>На цей показник впливає {hpBreakdown.statName} лорда.</small></div>
+        <div><b>Швидкість атаки: {unit.combat.attackSpeed}</b><span>Базове значення юніта</span><small>Не залежить від параметрів лорда.</small></div>
+        <div><b>Вартість лідерства: {unit.combat.leadershipCost}</b><span>Базове значення юніта</span><small>Не залежить від параметрів лорда.</small></div>
+        {affectedStats.map((stat) => <div className="lord-contribution" key={stat}><b>{lordStatNames[stat] ?? stat}: {formatStat(battleLord[stat] ?? 0)}</b><span>Поточне значення лорда в бою</span></div>)}
+      </div>
+    </section>
     <section className="unit-details-section">
       <h4>{'\u0423\u043c\u0456\u043d\u043d\u044f'}</h4>
       <div className="unit-abilities">
         {unit.combat.actions.map((action) => {
-          const value = getActionValue(action, lord);
-          return <div key={action.id}><b>{action.name}</b><span>{action.effectKind} · {action.rangeType}</span><small>{value !== null && action.effectKind === 'damage' ? `${'\u0428\u043a\u043e\u0434\u0430'}: ${formatStat(value)}` : '\u0411\u0435\u0437 \u043f\u0440\u044f\u043c\u043e\u0457 \u0448\u043a\u043e\u0434\u0438'}{action.manaCost ? ` · ${action.manaCost} \u0441\u0438\u043b\u0438 \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u0430` : ''}{action.cooldown ? ` · \u0412\u0456\u0434\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044f: ${action.cooldown} \u0445\u043e\u0434\u0438` : ''}</small></div>;
+          const breakdown = getFormulaBreakdown(action.formula, battleLord);
+          return <div key={action.id}>
+            <b>{action.name}</b>
+            <span>{effectNames[action.effectKind] ?? action.effectKind} · {action.rangeType === 'melee' ? 'ближня' : 'дальня'} дія · {actionTargetDescription(action)}</span>
+            {breakdown && <strong>{effectNames[action.effectKind] ?? 'Ефект'}: {formatStat(breakdown.result)}</strong>}
+            {breakdown && <small className="formula">Розрахунок: {breakdown.calculation}</small>}
+            <small>{action.manaCost ? `Вартість: ${action.manaCost} сили кристала` : 'Без витрат сили кристала'}{action.cooldown ? ` · Відновлення: ${action.cooldown} ходи` : ''}</small>
+          </div>;
         })}
       </div>
     </section>
@@ -345,46 +439,75 @@ function App() {
         {run.phase === 'hub' && <>
           {hubView === 'hub' && <>
           <h3>1. Зберіть армію</h3>
-          <p>Натисніть картку юніта, щоб найняти його. Вартість у дужках — лідерство.</p>
+          <p>Перегляньте ключові характеристики перед наймом. «Деталі» покаже повний розрахунок кожного значення для вашого лорда.</p>
+          {selectedRecruitUnitId && <UnitDetails unit={getEmpireUnit(selectedRecruitUnitId)} lord={lord} onClose={() => setSelectedRecruitUnitId('')} />}
           <div className="roster">
-            <label className="recruit-details-picker">
-              <span>{'\u041f\u0435\u0440\u0435\u0433\u043b\u044f\u043d\u0443\u0442\u0438 \u0434\u0435\u0442\u0430\u043b\u0456 \u044e\u043d\u0456\u0442\u0430'}</span>
-              <select value={selectedRecruitUnitId} onChange={(event) => setSelectedRecruitUnitId(event.target.value)}>
-                <option value="">{'\u041e\u0431\u0440\u0430\u0442\u0438 \u044e\u043d\u0456\u0442\u0430'}</option>
-                {roster.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
-              </select>
-            </label>
-            {selectedRecruitUnitId && <UnitDetails unit={getEmpireUnit(selectedRecruitUnitId)} lord={lord} onClose={() => setSelectedRecruitUnitId('')} />}
-            {roster.map((unit) => <button className="recruit-card" key={unit.id} onClick={() => setRun((current) => recruitUnit(current, unit.id))}><UnitPortrait unitId={unit.id} className="recruit-portrait" /><span className="recruit-card-copy"><b>{unit.name}</b><span>{unit.role}</span><small>{unit.combat.leadershipCost} лідерства · Найняти →</small></span></button>)}
+            {roster.map((unit) => {
+              const battleLord = getBattleLordStats(lord);
+              const instance = createUnitInstance(unit, battleLord);
+              const mainAction = unit.combat.actions.find((action) => action.effectKind === 'damage') ?? unit.combat.actions[0];
+              const mainActionValue = getActionValue(mainAction, battleLord);
+              const canRecruit = run.gold >= unit.combat.leadershipCost && leadershipUsed + unit.combat.leadershipCost <= run.economicLimit;
+              const unavailableReason = run.gold < unit.combat.leadershipCost ? 'Бракує золота' : 'Бракує лідерства';
+              return <article className="recruit-card" key={unit.id}>
+                <UnitPortrait unitId={unit.id} className="recruit-portrait" />
+                <div className="recruit-card-copy">
+                  <b>{unit.name}</b>
+                  <span>{roleNames[unit.role] ?? unit.role}</span>
+                  <div className="recruit-stats"><span>HP <strong>{formatStat(instance.maxHp)}</strong></span>{mainActionValue !== null && <span>{effectNames[mainAction.effectKind] ?? 'Ефект'} <strong>{formatStat(mainActionValue)}</strong></span>}<span>Швидкість <strong>{unit.combat.attackSpeed}</strong></span></div>
+                  <small>{unit.combat.leadershipCost} золота · {unit.combat.leadershipCost} лідерства</small>
+                </div>
+                <div className="recruit-card-actions">
+                  <button className="recruit-details-button" onClick={() => setSelectedRecruitUnitId(unit.id)}>Деталі</button>
+                  <button className="recruit-buy-button" disabled={!canRecruit} title={!canRecruit ? unavailableReason : undefined} onClick={() => setRun((current) => recruitUnit(current, unit.id))}>Купити</button>
+                </div>
+              </article>;
+            })}
           </div>
           <p className="army-summary">Ваша армія: {run.army.length ? run.army.map((member) => getEmpireUnit(member.unitId).name).join(', ') : 'ще порожня — найміть хоча б одного юніта.'}</p>
           <div className="army-actions">
             {run.army.map((member) => {
               const unit = getEmpireUnit(member.unitId);
               const maxHp = createUnitInstance(unit, getBattleLordStats(lord)).maxHp;
+              const skillPriorities = actionPriorityOrder(member, unit);
+              const enemyTargetPriorities = targetPriorityOrder(member, 'enemy');
+              const allyTargetPriorities = targetPriorityOrder(member, 'ally');
+              const updateTactics = (patch) => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: { ...member.tactics, ...patch } }));
+              const updateTargetPriorities = (side, priorities) => {
+                const currentPriorities = member.tactics?.targetPriority;
+                const targetPriority = currentPriorities && typeof currentPriorities === 'object' && !Array.isArray(currentPriorities) ? currentPriorities : {};
+                updateTactics({ targetPriority: { ...targetPriority, [side]: priorities } });
+              };
               return <div className="member-actions" key={member.instanceId}>
                 <UnitPortrait unitId={unit.id} className="army-member-portrait" />
                 <div className="member-heading"><strong>{unit.name}</strong><span>HP {member.hp ?? maxHp}/{maxHp} · EXP {member.exp}</span></div>
-                <div className="tactics">
-                  <label>Дія
-                    <select value={member.tactics?.actionPriority ?? ''} onChange={(event) => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: { ...member.tactics, actionPriority: event.target.value || undefined } }))}>
-                      <option value="">Автоматично</option>
-                      <option value="damage">Шкода</option>
-                      <option value="heal">Лікування</option>
-                      <option value="control">Контроль</option>
-                      <option value="buff">Бафи</option>
-                    </select>
-                  </label>
-                  <label>Ціль
-                    <select value={member.tactics?.targetPriority ?? ''} onChange={(event) => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: { ...member.tactics, targetPriority: event.target.value || undefined } }))}>
-                      <option value="">За замовчуванням</option>
-                      <option value="nearest">Найближча</option>
-                      <option value="lowest_hp">Найнижче HP</option>
-                      <option value="highest_threat">Найбільша загроза</option>
-                      <option value="random">Випадкова</option>
-                    </select>
-                  </label>
-                </div>
+                <section className="tactics" aria-label={`Тактика юніта ${unit.name}`}>
+                  <div className="tactics-heading"><div><b>Тактика</b><span>Порядок умінь і цілей налаштовується окремо.</span></div><button className="tactics-reset" onClick={() => setRun((current) => updateArmyMember(current, member.instanceId, { tactics: undefined }))}>Автоматично</button></div>
+                  <div className="tactics-group">
+                    <h4>1. Пріоритет умінь</h4>
+                    <p>Юніт застосує перше доступне й доречне вміння зі списку.</p>
+                    <ol className="tactics-priority-list">
+                      {skillPriorities.map((actionId, index) => {
+                        const action = unit.combat.actions.find((candidate) => candidate.id === actionId);
+                        return <li key={actionId}><span className="priority-number">{index + 1}</span><div><b>{action.name}</b><small>{actionTacticSummary(action)}</small></div><div className="priority-move"><button aria-label={`Підняти ${action.name}`} disabled={index === 0} onClick={() => updateTactics({ actionPriority: movePriorityItem(skillPriorities, actionId, -1) })}>↑</button><button aria-label={`Опустити ${action.name}`} disabled={index === skillPriorities.length - 1} onClick={() => updateTactics({ actionPriority: movePriorityItem(skillPriorities, actionId, 1) })}>↓</button></div></li>;
+                      })}
+                    </ol>
+                  </div>
+                  {canConfigureTargetsFor(unit, 'enemy') && <div className="tactics-group">
+                    <h4>2. Пріоритет цілей: вороги</h4>
+                    <p>Застосовується лише до умінь, які обирають ворога.</p>
+                    <ol className="tactics-priority-list compact">
+                      {enemyTargetPriorities.map((priority, index) => <li key={priority}><span className="priority-number">{index + 1}</span><b>{targetPriorityOptions[priority]}</b><div className="priority-move"><button aria-label={`Підняти ${targetPriorityOptions[priority]}`} disabled={index === 0} onClick={() => updateTargetPriorities('enemy', movePriorityItem(enemyTargetPriorities, priority, -1))}>↑</button><button aria-label={`Опустити ${targetPriorityOptions[priority]}`} disabled={index === enemyTargetPriorities.length - 1} onClick={() => updateTargetPriorities('enemy', movePriorityItem(enemyTargetPriorities, priority, 1))}>↓</button></div></li>)}
+                    </ol>
+                  </div>}
+                  {canConfigureTargetsFor(unit, 'ally') && <div className="tactics-group">
+                    <h4>3. Пріоритет цілей: союзники</h4>
+                    <p>Застосовується лише до умінь, які обирають союзника.</p>
+                    <ol className="tactics-priority-list compact">
+                      {allyTargetPriorities.map((priority, index) => <li key={priority}><span className="priority-number">{index + 1}</span><b>{targetPriorityOptions[priority]}</b><div className="priority-move"><button aria-label={`Підняти ${targetPriorityOptions[priority]}`} disabled={index === 0} onClick={() => updateTargetPriorities('ally', movePriorityItem(allyTargetPriorities, priority, -1))}>↑</button><button aria-label={`Опустити ${targetPriorityOptions[priority]}`} disabled={index === allyTargetPriorities.length - 1} onClick={() => updateTargetPriorities('ally', movePriorityItem(allyTargetPriorities, priority, 1))}>↓</button></div></li>)}
+                    </ol>
+                  </div>}
+                </section>
                 {member.hp === 0 && <button onClick={() => setRun((current) => reviveUnit(current, member.instanceId, maxHp))}>Воскресити (10)</button>}
                 {member.hp && member.hp < maxHp && <button onClick={() => setRun((current) => healUnit(current, member.instanceId, maxHp))}>Лікувати</button>}
                 {unit.combat.evolutions.map((targetId) => <button disabled={member.exp < (unit.combat.expToUpgrade ?? 100)} key={targetId} onClick={() => setRun((current) => evolveUnit(current, member.instanceId, targetId))}>Еволюція: {getEmpireUnit(targetId).name}</button>)}
