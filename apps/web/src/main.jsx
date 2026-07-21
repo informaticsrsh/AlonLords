@@ -316,16 +316,16 @@ function BattleUnitCard({ unit, activeId, targetId }) {
 
 function BattleFormation({ title, side, units, activeId, targetId, event, playback }) {
   const unitAt = (row, column) => units.find((unit) => unit.position?.row === row && unit.position?.column === column);
-  const frontlineColumn = side === 'ally' ? 4 : 0;
-  return <section className={`formation ${side}`}><header className="formation-heading"><h4>{title}</h4><span>{units.filter((unit) => unit.hp > 0).length}/{units.length}</span></header><div className="formation-lanes"><span>{side === 'ally' ? 'Тил' : '← Фронт'}</span><b>{side === 'ally' ? 'Фронт →' : 'Тил'}</b></div><div className="formation-grid">
+  return <section className={`formation ${side}`}><header className="formation-heading"><h4>{title}</h4><span>{units.filter((unit) => unit.hp > 0).length}/{units.length}</span></header><div className="formation-lanes"><b>{side === 'enemy' ? 'ФРОНТ ↓' : 'ФРОНТ ↑'}</b><span>{side === 'enemy' ? 'Тил ↑' : 'Тил ↓'}</span></div><div className="formation-grid">
     {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
-      const unit = unitAt(row, column);
+      const logicalRow = side === 'enemy' ? 2 - row : row;
+      const unit = unitAt(logicalRow, column);
       const hpPercent = unit?.maxHp ? Math.max(0, Math.min(100, unit.hp / unit.maxHp * 100)) : 0;
       const isActor = unit?.id === activeId;
       const isTarget = unit?.id === targetId;
       const info = battleEventInfo(event);
       const timing = unit ? nextActionTiming(playback, unit.id) : null;
-      return <div className={`formation-cell ${column === frontlineColumn ? 'frontline-cell' : ''} ${unit ? 'occupied' : ''} ${isActor ? 'acting' : ''} ${isTarget ? 'targeted' : ''}`} key={`${row}-${column}`}>
+      return <div className={`formation-cell ${logicalRow === 0 ? 'frontline-cell' : ''} ${unit ? 'occupied' : ''} ${isActor ? 'acting' : ''} ${isTarget ? 'targeted' : ''}`} key={`${row}-${column}`}>
         {unit && <><UnitPortrait unitId={unit.unitId} className="battle-portrait" />
           <div className="unit-effect-icons" aria-label="Активні ефекти">{(unit.effects ?? []).map((effect, index) => <span className={effect.kind} key={`${effect.id}-${index}`} title={`${effect.id}${effect.duration !== null ? ` · ${effect.duration} ход.` : ''}`}>{effectIcon(effect)}<small>{effect.duration !== null ? effect.duration : ''}</small></span>)}</div>
           {isActor && <span className={`battle-cell-badge ${info.kind} ${info.damageType ? `damage-${info.damageType}` : ''}`}>{info.icon} {info.label}</span>}
@@ -654,11 +654,11 @@ function App() {
             <div className="roster">
               {run.army.map((member) => <button className={selectedMemberId === member.instanceId ? 'selected' : ''} key={member.instanceId} onClick={() => setSelectedMemberId(member.instanceId)}>{getEmpireUnit(member.unitId).name}</button>)}
             </div>
-            <div className="deployment-lanes" aria-hidden="true"><span>ТИЛ</span><b>ФРОНТ → ВОРОГ</b></div>
+            <div className="deployment-lanes" aria-hidden="true"><b>ФРОНТ — ПЕРШИЙ РЯД</b><span>ТИЛ ↓</span></div>
             <div className="grid" role="grid" aria-label="Сітка розміщення армії">
               {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
                 const placement = placedAt(row, column);
-                return <button className={`cell ${column === 4 ? 'frontline-cell' : ''}`} key={`${row}-${column}`} aria-label={`${column === 4 ? 'Фронтлайн. ' : ''}${placement?.unit.name ?? 'Порожня клітинка'}`} onClick={() => selectCell(row, column)}>{column === 4 && !placement ? <small>ФРОНТ</small> : placement?.unit.name ?? ''}</button>;
+                return <button className={`cell ${row === 0 ? 'frontline-cell' : ''}`} key={`${row}-${column}`} aria-label={`${row === 0 ? 'Фронтлайн. ' : ''}${placement?.unit.name ?? 'Порожня клітинка'}`} onClick={() => selectCell(row, column)}>{row === 0 && !placement ? <small>ФРОНТ</small> : placement?.unit.name ?? ''}</button>;
               }))}
             </div>
           </section>
@@ -689,9 +689,9 @@ function App() {
           </div>
           <BattleActionBanner event={playbackEvent} units={playbackState.units} />
           <div className="battlefield" aria-label="Поле бою з розміщенням армій">
-            <BattleFormation title="Імперія" side="ally" units={battlePlayback.initialAllies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
-            <strong className="battlefield-versus">VS</strong>
             <BattleFormation title="Ворожа армія Імперії" side="enemy" units={battlePlayback.initialEnemies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
+            <strong className="battlefield-versus">VS</strong>
+            <BattleFormation title="Імперія" side="ally" units={battlePlayback.initialAllies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
           </div>
           <div className={`action-flash ${playbackEvent?.type ?? 'ready'}`}>{playbackEvent?.type === 'heal' ? '✦ Зцілення' : playbackEvent?.type === 'control' ? '⚡ Контроль' : playbackEvent?.type === 'death' ? '☠ Загибель' : '✹ Удар'}</div>
         </section>}
