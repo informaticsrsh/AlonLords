@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitUnlockProgress, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
+import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitUnlockProgress, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
 const runStorageKey = 'empire-lords.run.v1';
