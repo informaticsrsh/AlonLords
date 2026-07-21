@@ -1,3 +1,5 @@
+import { getLordSkillEffects } from './lords.js';
+
 export function evaluateFormula(formula, lord) {
   return (formula.base + formula.multiplier * (lord[formula.lordStat] ?? 0)) * (formula.resultMultiplier ?? 1);
 }
@@ -191,13 +193,13 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     const damage = action.effectKind === 'damage' ? calculateDamage(action, resolution.amount * (1 + loneDuelBonus), attacker, target, rng) : null;
     const finalDamage = damage?.amount ?? 0;
     const redirectedDamage = finalDamage * redirectPct;
-    const arthurLevel = attacker?.lord?.id === 'empire_lord_arthur' ? attacker.lord.level ?? 1 : null;
+    const arthurEffects = attacker?.lord?.id === 'empire_lord_arthur' ? getLordSkillEffects(attacker.lord) : null;
     const attackerHpPct = attacker ? attacker.hp / attacker.maxHp : 0;
     const targetHpPctBefore = target.maxHp ? hpBefore / target.maxHp : 0;
-    const mercyActive = arthurLevel !== null
-      && attackerHpPct > Math.max(0.5, (90 - 2 * arthurLevel) / 100)
-      && targetHpPctBefore < Math.min(0.49, (18 + 1.6 * arthurLevel) / 100);
-    const mercyDamage = mercyActive ? finalDamage * ((15 + 2 * arthurLevel) / 100) : 0;
+    const mercyActive = arthurEffects !== null
+      && attackerHpPct > arthurEffects.healthyAllyThreshold
+      && targetHpPctBefore < arthurEffects.woundedTargetThreshold;
+    const mercyDamage = mercyActive ? finalDamage * arthurEffects.mercyDamageMultiplier : 0;
     const isRevive = action.targetRule.selection === 'corpse_of_dead_ally' && action.effectKind === 'heal';
     const blockedRevive = effectsBefore.some((effect) => effect.id === 'no_resurrection');
     const hpAfter = action.effectKind === 'damage'
@@ -256,7 +258,7 @@ export function applyActionEffect(action, lord, candidates, rng, attacker, guard
     if (attacker && healedAttacker) attacker.hp += healedAttacker;
     if (effect) target.effects = [...(target.effects ?? effectsBefore), effect];
     if (damage?.critical && action.executeOnCritBelowHpPct && target.hp / target.maxHp <= action.executeOnCritBelowHpPct) target.hp = 0;
-    if (mercyActive && target.hp / target.maxHp < Math.min(0.19, (6 + 0.7 * arthurLevel) / 100)) target.hp = 0;
+    if (mercyActive && target.hp / target.maxHp < arthurEffects.executeThreshold) target.hp = 0;
     return { targetId: target.id, hpBefore, hpAfter: target.hp, effect, guardianId: guardian?.id ?? null, redirectedDamage, damage: finalDamage, mercyDamage, critical: damage?.critical ?? false, reflectedDamage, counterDamage: counter?.amount ?? 0, counterHealing, healedAttacker, manaBurn, revived: isRevive && !blockedRevive, repositioned: action.effectKind === 'reposition' };
   });
 

@@ -1,5 +1,5 @@
 import { empireUnits, getEmpireUnit } from './catalog.js';
-import { getEmpireLord } from './lords.js';
+import { addLordExperience, createLordProgress, experienceToNextLordLevel, getEmpireLord, normalizeLordProgress } from './lords.js';
 
 const enemyProfiles = {
   safe: { leadership: 4, growth: 1, maxUnits: 2, label: 'Легкий загін' },
@@ -157,6 +157,7 @@ export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
   const lord = getEmpireLord(lordId) ?? getEmpireLord('empire_lord_henrik');
   return {
     lordId: lord.id,
+    lordProgress: createLordProgress(),
     seed,
     lives: 3,
     gold: 20,
@@ -166,6 +167,31 @@ export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
     army: [],
     nextUnitNumber: 1,
     phase: 'hub'
+  };
+}
+
+/** Combines a lord definition with the saved campaign-specific progression. */
+export function getRunLord(run) {
+  const lord = getEmpireLord(run.lordId) ?? getEmpireLord('empire_lord_henrik');
+  const progress = normalizeLordProgress(run.lordProgress);
+  return {
+    ...lord,
+    ...progress,
+    experienceToNextLevel: experienceToNextLordLevel(progress.level)
+  };
+}
+
+export function spendLordSkillPoint(run) {
+  if (run.phase !== 'hub') return run;
+  const progress = normalizeLordProgress(run.lordProgress);
+  if (progress.skillPoints < 1) return { ...run, lordProgress: progress };
+  return {
+    ...run,
+    lordProgress: {
+      ...progress,
+      skillPoints: progress.skillPoints - 1,
+      skillRank: progress.skillRank + 1
+    }
   };
 }
 
@@ -231,6 +257,9 @@ export function finishBattle(run, { victory, army = run.army }) {
   const lives = victory ? run.lives : run.lives - 1;
   const rewards = victory ? run.selectedPath ?? {} : {};
   const experiencedArmy = army.map((member) => ({ ...member, exp: member.exp + (rewards.expReward ?? 0) }));
+  const lordProgress = victory
+    ? addLordExperience(run.lordProgress, 10 + (rewards.expReward ?? 0))
+    : normalizeLordProgress(run.lordProgress);
   return {
     ...run,
     lives,
@@ -239,6 +268,7 @@ export function finishBattle(run, { victory, army = run.army }) {
     economicLimit: run.economicLimit + (rewards.economicLimitReward ?? 0),
     mines: run.mines + (rewards.mineReward ?? 0),
     army: experiencedArmy,
+    lordProgress,
     phase: lives > 0 ? 'hub' : 'game_over',
     selectedPath: null
   };

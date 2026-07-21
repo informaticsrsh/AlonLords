@@ -1,9 +1,9 @@
 import { applyActionEffect, applyBattleAuras, beginTurn, evaluateFormula, regenerateCrystal, selectAutomaticAction, spendActionResources, spendCrystalResources } from './actions.js';
-import { getBattleLordStats, getEmpireLord } from './lords.js';
+import { getBattleLordStats, getEmpireLord, getLordSkillEffects } from './lords.js';
 
 export { empireUnits, getEmpireUnit } from './catalog.js';
-export { empireLords, getBattleLordStats, getEmpireLord } from './lords.js';
-export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, healUnit, recruitUnit, reviveUnit, updateArmyMember } from './run.js';
+export { addLordExperience, createLordProgress, empireLords, experienceToNextLordLevel, getBattleLordStats, getEmpireLord, getLordSkillEffects, LORD_SKILL_POINTS_PER_LEVEL, normalizeLordProgress } from './lords.js';
+export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, getRunLord, healUnit, recruitUnit, reviveUnit, spendLordSkillPoint, updateArmyMember } from './run.js';
 export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, regenerateCrystal, resolveAction, selectAutomaticAction, selectTargets, spendActionResources, spendCrystalResources } from './actions.js';
 
 export function createUnitInstance(definition, lord) {
@@ -171,10 +171,10 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
             if (change.hpAfter === 0) {
               state.events.push({ type: 'death', round: state.round, unitId: change.targetId });
               if (side === 'ally') {
-                const faithGain = 10 * (lord.id === 'empire_lord_henrik' ? Math.min(1.3 + 0.03 * lord.level, 2) : 1);
+                const faithGain = 10 * (lord.id === 'empire_lord_henrik' ? getLordSkillEffects(lord).faithGainMultiplier : 1);
                 state.battleSpirit = Math.min(100, state.battleSpirit + faithGain);
               } else {
-                const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? Math.max(0.5, 1 - 0.02 * lord.level) : 1);
+                const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? getLordSkillEffects(lord).faithLossMultiplier : 1);
                 state.battleSpirit = Math.max(0, state.battleSpirit - faithLoss);
               }
               state.events.push({ type: 'faith', round: state.round, value: state.battleSpirit });
@@ -192,10 +192,10 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
           if (target.hp === 0) {
             state.events.push({ type: 'death', round: state.round, unitId: target.id });
             if (side === 'ally') {
-              const faithGain = 10 * (lord.id === 'empire_lord_henrik' ? Math.min(1.3 + 0.03 * lord.level, 2) : 1);
+              const faithGain = 10 * (lord.id === 'empire_lord_henrik' ? getLordSkillEffects(lord).faithGainMultiplier : 1);
               state.battleSpirit = Math.min(100, state.battleSpirit + faithGain);
             } else {
-              const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? Math.max(0.5, 1 - 0.02 * lord.level) : 1);
+              const faithLoss = 10 * (lord.id === 'empire_lord_henrik' ? getLordSkillEffects(lord).faithLossMultiplier : 1);
               state.battleSpirit = Math.max(0, state.battleSpirit - faithLoss);
             }
             state.events.push({ type: 'faith', round: state.round, value: state.battleSpirit });

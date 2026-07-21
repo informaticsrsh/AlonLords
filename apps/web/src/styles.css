@@ -498,6 +498,42 @@ button { font-weight: 700; }
 .battle-results-screen .battle-state { margin: 28px 0 18px; text-align: left; }.battle-results-screen .battle-state > div { padding: 12px; border: 1px solid rgba(216, 232, 255, .2); border-radius: 14px; background: rgba(7, 14, 65, .28); }.battle-results-screen .battle-state h4 { color: #fff0a1; font: 700 1.1rem Georgia, serif; }
 .battle-results-screen .battle-unit { background: rgba(71, 80, 162, .52); }.battle-results-screen .survivors { justify-content: center; }.battle-results-screen .survivors span { color: #f6f8ff; background: rgba(106, 98, 189, .5); }.battle-results-screen details { margin: 20px auto 0; max-width: 640px; text-align: left; }.results-continue { display: inline-block; margin-top: 28px; min-width: 230px; }
 
+/* Lord information stays available without consuming the campaign screen. */
+.campaign-header-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.lord-profile-button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 5px 11px 5px 5px;
+  border: 1px solid rgba(255, 229, 135, .82); border-radius: 12px; color: #fff8db;
+  background: linear-gradient(145deg, rgba(80, 95, 195, .92), rgba(58, 38, 135, .94));
+  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 8px 18px rgba(8, 10, 67, .28); text-align: left;
+}
+.lord-profile-button:hover { border-color: #fff0a5; transform: translateY(-1px); }
+.lord-profile-button small { display: block; color: #c9dcff; font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.lord-profile-button b { display: block; font: 700 .82rem Georgia, serif; }
+.lord-profile-icon, .lord-details-portrait { display: block; overflow: hidden; border: 1px solid #fff1a1; border-radius: 50%; background: #654ab0; box-shadow: 0 0 0 2px rgba(161, 216, 255, .25); }
+.lord-profile-icon { width: 34px; height: 34px; }.lord-profile-icon img, .lord-details-portrait img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.05); }
+.lord-selection-summary { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: clamp(18px, 3vw, 32px); }
+.lord-selection-summary > div { max-width: 500px; }.lord-selection-summary h2 { margin: 0; }.lord-selection-summary p:not(.eyebrow) { color: #d9e6ff; }.lord-selection-summary .menu-primary { margin-top: 10px; }
+.lord-details.modal-dialog { display: block; padding: clamp(18px, 3vw, 28px); }
+.lord-details-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.lord-details-title { display: flex; align-items: center; gap: 14px; min-width: 0; }.lord-details-title h2 { margin: 0 0 5px; color: #fff6c5; }.lord-details-title > div > span { display: block; color: #d5e5ff; font-size: .84rem; line-height: 1.4; }
+.lord-details-portrait { flex: 0 0 auto; width: 76px; height: 76px; }
+.lord-level-card { display: grid; grid-template-columns: minmax(95px, .8fr) minmax(190px, 2fr) minmax(105px, .9fr); gap: 10px; margin: 21px 0; }
+.lord-level-card > div { display: grid; align-content: center; gap: 4px; min-height: 77px; padding: 11px; border: 1px solid rgba(202, 229, 255, .27); border-radius: 10px; background: rgba(13, 21, 89, .38); }
+.lord-level-card span, .lord-level-card small { color: #c8dcff; font-size: .7rem; }.lord-level-card b { color: #fff0a5; font-size: 1.08rem; }.lord-level-card > div:first-child b, .lord-level-card > div:last-child b { font: 800 1.75rem/1 Georgia, serif; }
+.lord-experience i { display: block; height: 7px; overflow: hidden; border-radius: 99px; background: rgba(4, 9, 55, .75); }.lord-experience em { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8be1ff, #ffe57f); box-shadow: 0 0 10px #78d8ff; }
+.lord-details-section { margin-top: 20px; }.lord-details-section h3 { margin: 0 0 10px; color: #fff0a6; font: 700 1.12rem Georgia, serif; }
+.lord-profile-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.lord-profile-stats > div, .skill-calculations > div { display: grid; gap: 4px; padding: 10px; border: 1px solid rgba(191, 219, 255, .2); border-radius: 8px; background: rgba(15, 19, 86, .36); }
+.lord-profile-stats span, .lord-profile-stats small, .skill-calculations small { color: #c8dcff; font-size: .7rem; }.lord-profile-stats b, .skill-calculations b { color: #fff0a4; }
+.lord-skill-details { padding: 14px; border: 1px solid rgba(255, 224, 126, .42); border-radius: 12px; background: radial-gradient(circle at 0 0, rgba(255, 218, 111, .12), transparent 35%), rgba(25, 22, 101, .34); }.lord-skill-details > p { margin: 0 0 12px; color: #d9e7ff; line-height: 1.48; }
+.lord-skill-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.lord-skill-heading h3 { margin: 0; }.lord-skill-heading .eyebrow { margin: 0 0 4px; }.lord-skill-heading > span { padding: 5px 8px; border: 1px solid rgba(255, 230, 135, .54); border-radius: 99px; color: #fff0aa; background: rgba(57, 41, 130, .65); font-size: .75rem; font-weight: 800; }
+.skill-calculations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.skill-calculations span { color: #f6f8ff; font-weight: 700; line-height: 1.3; }
+.spend-skill-point { margin-top: 14px; border-color: #ffe685; color: #3a285e; background: linear-gradient(135deg, #fff0a5, #f3b658); }.spend-skill-point:disabled { border-color: rgba(195, 208, 255, .28); color: #c7cbe4; background: rgba(48, 48, 111, .74); }.skill-spend-note { display: block; margin-top: 8px; color: #c9dcff; }
+@media (max-width: 700px) {
+  .campaign-header-actions { justify-content: flex-start; }.lord-selection-summary { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .lord-level-card, .lord-profile-stats, .skill-calculations { grid-template-columns: 1fr; }.lord-level-card > div { min-height: 0; }
+  .lord-details-portrait { width: 58px; height: 58px; }.lord-details-title { align-items: flex-start; }
+}
+
 /* Event layer: explains each animation directly on the battlefield. */
 .battle-action-banner { display: grid; grid-template-columns: minmax(0, 1fr) 170px minmax(0, 1fr); align-items: center; gap: 10px; max-width: 690px; margin: 0 auto 14px; padding: 8px; border: 1px solid rgba(211, 239, 255, .4); border-radius: 14px; background: rgba(5, 11, 62, .46); animation: battle-banner-in .2s ease both; }
 .battle-action-unit { display: flex; min-width: 0; align-items: center; gap: 8px; color: #f7fbff; font-size: .78rem; }
