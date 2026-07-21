@@ -1,5 +1,5 @@
 import { empireUnits, getEmpireUnit } from './catalog.js';
-import { addLordExperience, createLordProgress, experienceToNextLordLevel, getEmpireLord, normalizeLordProgress } from './lords.js';
+import { addLordExperience, createLordProgress, experienceToNextLordLevel, getEmpireLord, LORD_ATTRIBUTE_UPGRADES, normalizeLordProgress } from './lords.js';
 
 const enemyProfiles = {
   safe: { leadership: 4, growth: 1, maxUnits: 2, label: 'Легкий загін' },
@@ -174,15 +174,21 @@ export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
 export function getRunLord(run) {
   const lord = getEmpireLord(run.lordId) ?? getEmpireLord('empire_lord_henrik');
   const progress = normalizeLordProgress(run.lordProgress);
+  const upgradedStats = Object.fromEntries(Object.entries(LORD_ATTRIBUTE_UPGRADES).map(([attribute, upgrade]) => [
+    attribute,
+    lord[attribute] + progress.attributes[attribute] * upgrade.amount
+  ]));
   return {
     ...lord,
     ...progress,
+    ...upgradedStats,
     experienceToNextLevel: experienceToNextLordLevel(progress.level)
   };
 }
 
-export function spendLordSkillPoint(run) {
+export function spendLordAttributePoint(run, attribute) {
   if (run.phase !== 'hub') return run;
+  if (!LORD_ATTRIBUTE_UPGRADES[attribute]) return run;
   const progress = normalizeLordProgress(run.lordProgress);
   if (progress.skillPoints < 1) return { ...run, lordProgress: progress };
   return {
@@ -190,9 +196,13 @@ export function spendLordSkillPoint(run) {
     lordProgress: {
       ...progress,
       skillPoints: progress.skillPoints - 1,
-      skillRank: progress.skillRank + 1
+      attributes: { ...progress.attributes, [attribute]: progress.attributes[attribute] + 1 }
     }
   };
+}
+
+function leadershipLimit(run) {
+  return run.economicLimit + normalizeLordProgress(run.lordProgress).attributes.leadership * LORD_ATTRIBUTE_UPGRADES.leadership.amount;
 }
 
 export function recruitUnit(run, unitId) {
@@ -201,7 +211,7 @@ export function recruitUnit(run, unitId) {
   if (!unit?.combat) return run;
   const cost = unit.combat.leadershipCost;
   const leadershipUsed = run.army.reduce((sum, member) => sum + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
-  if (run.gold < cost || leadershipUsed + cost > run.economicLimit) return run;
+  if (run.gold < cost || leadershipUsed + cost > leadershipLimit(run)) return run;
 
   const member = {
     instanceId: `${unitId}-${run.nextUnitNumber}`,
@@ -257,8 +267,9 @@ export function finishBattle(run, { victory, army = run.army }) {
   const lives = victory ? run.lives : run.lives - 1;
   const rewards = victory ? run.selectedPath ?? {} : {};
   const experiencedArmy = army.map((member) => ({ ...member, exp: member.exp + (rewards.expReward ?? 0) }));
+  const lordExperienceReward = experiencedArmy.reduce((total, member, index) => total + (member.exp - (army[index]?.exp ?? member.exp)), 0);
   const lordProgress = victory
-    ? addLordExperience(run.lordProgress, 10 + (rewards.expReward ?? 0))
+    ? addLordExperience(run.lordProgress, lordExperienceReward)
     : normalizeLordProgress(run.lordProgress);
   return {
     ...run,

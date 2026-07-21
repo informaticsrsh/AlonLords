@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLordExperience, applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRunLord, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources, spendLordSkillPoint } from '../src/index.js';
+import { addLordExperience, applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRunLord, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources, spendLordAttributePoint } from '../src/index.js';
 
 const allies = [
   { id: 'guard', maxHp: 24, attack: 7, critChance: 0.2 }
@@ -341,20 +341,25 @@ describe('Empire unit catalog', () => {
 });
 
 describe('run loop', () => {
-  it('levels a lord, awards three skill points, and spends them on the signature skill', () => {
-    const progressed = addLordExperience({ level: 1, experience: 95, skillPoints: 0, skillRank: 1 }, 10);
-    expect(progressed).toEqual({ level: 2, experience: 5, skillPoints: 3, skillRank: 1 });
+  it('levels a lord, awards three skill points, and spends them on base attributes', () => {
+    const progressed = addLordExperience({ level: 1, experience: 45, skillPoints: 0 }, 10);
+    expect(progressed).toMatchObject({ level: 2, experience: 5, skillPoints: 3, attributes: { battlePower: 0 } });
 
     const run = { ...createRun(), lordProgress: progressed };
-    const upgraded = spendLordSkillPoint(run);
-    expect(getRunLord(upgraded)).toMatchObject({ level: 2, experience: 5, experienceToNextLevel: 150, skillPoints: 2, skillRank: 2 });
+    const upgraded = spendLordAttributePoint(run, 'battlePower');
+    expect(getRunLord(upgraded)).toMatchObject({ level: 2, experience: 5, experienceToNextLevel: 75, skillPoints: 2, battlePower: 4 });
     expect(getLordSkillEffects(getRunLord(upgraded)).faithGainMultiplier).toBeCloseTo(1.36);
   });
 
-  it('awards lord experience when a battle is won', () => {
-    const run = choosePath(recruitUnit(createRun(), 'empire_archer_t1'), { id: 'safe', goldReward: 5, expReward: 5 });
+  it('continues lord levels beyond 20 while keeping per-level experience progression', () => {
+    expect(addLordExperience({ level: 20, experience: 500, skillPoints: 0 }, 25)).toMatchObject({ level: 21, experience: 0, skillPoints: 3 });
+  });
+
+  it('awards a lord the sum of experience earned by its army', () => {
+    const onceRecruited = recruitUnit(createRun(), 'empire_archer_t1');
+    const run = choosePath(recruitUnit(onceRecruited, 'empire_infantry_t1'), { id: 'safe', goldReward: 5, expReward: 5 });
     const completed = finishBattle(run, { victory: true });
-    expect(getRunLord(completed)).toMatchObject({ experience: 15, skillPoints: 0 });
+    expect(getRunLord(completed)).toMatchObject({ experience: 10, skillPoints: 0 });
   });
 
   it('recruits in Hub, enters battle through a path, and grants its reward on victory', () => {

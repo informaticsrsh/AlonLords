@@ -2,8 +2,8 @@ import { applyActionEffect, applyBattleAuras, beginTurn, evaluateFormula, regene
 import { getBattleLordStats, getEmpireLord, getLordSkillEffects } from './lords.js';
 
 export { empireUnits, getEmpireUnit } from './catalog.js';
-export { addLordExperience, createLordProgress, empireLords, experienceToNextLordLevel, getBattleLordStats, getEmpireLord, getLordSkillEffects, LORD_SKILL_POINTS_PER_LEVEL, normalizeLordProgress } from './lords.js';
-export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, getRunLord, healUnit, recruitUnit, reviveUnit, spendLordSkillPoint, updateArmyMember } from './run.js';
+export { addLordExperience, createLordProgress, empireLords, experienceToNextLordLevel, getBattleLordStats, getEmpireLord, getLordSkillEffects, LORD_ATTRIBUTE_UPGRADES, LORD_SKILL_POINTS_PER_LEVEL, normalizeLordProgress } from './lords.js';
+export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, getRunLord, healUnit, recruitUnit, reviveUnit, spendLordAttributePoint, updateArmyMember } from './run.js';
 export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, regenerateCrystal, resolveAction, selectAutomaticAction, selectTargets, spendActionResources, spendCrystalResources } from './actions.js';
 
 export function createUnitInstance(definition, lord) {

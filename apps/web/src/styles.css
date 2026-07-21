@@ -513,6 +513,7 @@ button { font-weight: 700; }
 .lord-profile-icon { width: 34px; height: 34px; }.lord-profile-icon img, .lord-details-portrait img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.05); }
 .lord-selection-summary { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: clamp(18px, 3vw, 32px); }
 .lord-selection-summary > div { max-width: 500px; }.lord-selection-summary h2 { margin: 0; }.lord-selection-summary p:not(.eyebrow) { color: #d9e6ff; }.lord-selection-summary .menu-primary { margin-top: 10px; }
+.lord-detail .lord-profile-button { margin: 10px 10px 0 0; vertical-align: middle; }.lord-detail .menu-primary { margin-top: 10px; vertical-align: middle; }
 .lord-details.modal-dialog { display: block; padding: clamp(18px, 3vw, 28px); }
 .lord-details-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .lord-details-title { display: flex; align-items: center; gap: 14px; min-width: 0; }.lord-details-title h2 { margin: 0 0 5px; color: #fff6c5; }.lord-details-title > div > span { display: block; color: #d5e5ff; font-size: .84rem; line-height: 1.4; }
@@ -524,6 +525,7 @@ button { font-weight: 700; }
 .lord-details-section { margin-top: 20px; }.lord-details-section h3 { margin: 0 0 10px; color: #fff0a6; font: 700 1.12rem Georgia, serif; }
 .lord-profile-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.lord-profile-stats > div, .skill-calculations > div { display: grid; gap: 4px; padding: 10px; border: 1px solid rgba(191, 219, 255, .2); border-radius: 8px; background: rgba(15, 19, 86, .36); }
 .lord-profile-stats span, .lord-profile-stats small, .skill-calculations small { color: #c8dcff; font-size: .7rem; }.lord-profile-stats b, .skill-calculations b { color: #fff0a4; }
+.lord-profile-stats .attribute-upgrade { justify-self: start; margin-top: 5px; padding: 5px 7px; border-color: rgba(255, 228, 132, .72); border-radius: 6px; color: #332358; background: linear-gradient(135deg, #fff2a9, #f5bd62); font-size: .66rem; }.lord-profile-stats .attribute-upgrade:disabled { border-color: rgba(195, 208, 255, .28); color: #c7cbe4; background: rgba(48, 48, 111, .74); }
 .lord-skill-details { padding: 14px; border: 1px solid rgba(255, 224, 126, .42); border-radius: 12px; background: radial-gradient(circle at 0 0, rgba(255, 218, 111, .12), transparent 35%), rgba(25, 22, 101, .34); }.lord-skill-details > p { margin: 0 0 12px; color: #d9e7ff; line-height: 1.48; }
 .lord-skill-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.lord-skill-heading h3 { margin: 0; }.lord-skill-heading .eyebrow { margin: 0 0 4px; }.lord-skill-heading > span { padding: 5px 8px; border: 1px solid rgba(255, 230, 135, .54); border-radius: 99px; color: #fff0aa; background: rgba(57, 41, 130, .65); font-size: .75rem; font-weight: 800; }
 .skill-calculations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.skill-calculations span { color: #f6f8ff; font-weight: 700; line-height: 1.3; }

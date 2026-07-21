@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRunLord, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordSkillPoint, updateArmyMember } from '@empire/game-core';
+import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRunLord, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
 const roster = empireUnits.filter((unit) => unit.tier === 1);
@@ -72,7 +72,9 @@ const factions = [{
 }];
 
 function formatStat(value) {
-  return Number.isInteger(value) ? value : Number(value.toFixed(1));
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return String(value);
+  return Number.isInteger(numericValue) ? numericValue : Number(numericValue.toFixed(1));
 }
 
 function getActionValue(action, lord) {
@@ -187,20 +189,20 @@ function LordProfileButton({ lord, onClick, label = 'Профіль лорда' 
   </button>;
 }
 
-function LordDetails({ lord, onClose, onSpendSkillPoint, canSpendSkillPoint = false }) {
+function LordDetails({ lord, onClose, onSpendAttributePoint, canSpendAttributePoint = false }) {
   const battleLord = getBattleLordStats(lord);
   const skill = getLordSkillEffects(lord);
   const experience = lord.experience ?? 0;
   const experienceToNextLevel = lord.experienceToNextLevel ?? 100;
-  const progress = Math.min(100, experience / experienceToNextLevel * 100);
+  const progress = experienceToNextLevel ? Math.min(100, experience / experienceToNextLevel * 100) : 100;
   const isArthur = lord.id === 'empire_lord_arthur';
   const statItems = [
-    ['Лідерство', lord.leadership],
-    ['Тактика', lord.tactics],
-    ['Бойова сила', lord.battlePower, battleLord.battlePower],
-    ['Витривалість', lord.vitality, battleLord.vitality],
-    ['Сила кристалу', lord.crystalVolume],
-    ['Регенерація кристалу', `+${formatStat(lord.crystalRegenSpeed / 5)}/хід`, `+${formatStat(battleLord.crystalRegenSpeed / 5)}/хід`]
+    { id: 'leadership', name: 'Лідерство', value: lord.leadership, increase: '+1' },
+    { id: 'tactics', name: 'Тактика', value: lord.tactics, increase: '+1' },
+    { id: 'battlePower', name: 'Бойова сила', value: lord.battlePower, battleValue: battleLord.battlePower, increase: '+1' },
+    { id: 'vitality', name: 'Витривалість', value: lord.vitality, battleValue: battleLord.vitality, increase: '+1' },
+    { id: 'crystalVolume', name: 'Сила кристалу', value: lord.crystalVolume, increase: '+5' },
+    { id: 'crystalRegenSpeed', name: 'Регенерація кристалу', value: lord.crystalRegenSpeed / 5, battleValue: battleLord.crystalRegenSpeed / 5, suffix: '/хід', increase: '+0,2/хід' }
   ];
   useEffect(() => {
     const closeOnEscape = (event) => { if (event.key === 'Escape') onClose(); };
@@ -221,28 +223,29 @@ function LordDetails({ lord, onClose, onSpendSkillPoint, canSpendSkillPoint = fa
       <section className="lord-details-section">
         <h3>Характеристики</h3>
         <div className="lord-profile-stats">
-          {statItems.map(([name, value, battleValue]) => <div key={name}><span>{name}</span><b>{value}</b>{battleValue !== undefined && battleValue !== value && <small>У бою: {formatStat(battleValue)}</small>}</div>)}
+          {statItems.map((stat) => <div key={stat.id}><span>{stat.name}</span><b>{formatStat(stat.value)}{stat.suffix ?? ''}</b>{stat.battleValue !== undefined && stat.battleValue !== stat.value && <small>У бою: {formatStat(stat.battleValue)}{stat.suffix ?? ''}</small>}{onSpendAttributePoint && <button className="attribute-upgrade" disabled={!canSpendAttributePoint || (lord.skillPoints ?? 0) < 1} onClick={() => onSpendAttributePoint(stat.id)}>Покращити {stat.increase} · 1 SP</button>}</div>)}
         </div>
       </section>
       <section className="lord-details-section lord-skill-details">
-        <div className="lord-skill-heading"><div><p className="eyebrow">Унікальна навичка · ранг {skill.rank}</p><h3>{isArthur ? 'Удар милосердя' : 'Посилена Віра'}</h3></div><span>{lord.skillPoints ?? 0} SP</span></div>
+        <div className="lord-skill-heading"><div><p className="eyebrow">Унікальна навичка · залежить від рівня {skill.level}</p><h3>{isArthur ? 'Удар милосердя' : 'Посилена Віра'}</h3></div><span>Рівень {skill.level}</span></div>
         {isArthur ? <>
           <p>Здоровий союзник завдає додаткової шкоди пораненому ворогу. Якщо після цього удару ціль майже переможена — вона буде страчена.</p>
           <div className="skill-calculations">
-            <div><b>Умова</b><span>HP союзника &gt; {formatStat(skill.healthyAllyThreshold * 100)}% і HP ворога &lt; {formatStat(skill.woundedTargetThreshold * 100)}%</span><small>90% − 2% × ранг; 18% + 1,6% × ранг</small></div>
-            <div><b>Додаткова шкода</b><span>Шкода удару × {formatStat(skill.mercyDamageMultiplier * 100)}%</span><small>15% + 2% × ранг</small></div>
-            <div><b>Страта</b><span>Після удару HP ворога &lt; {formatStat(skill.executeThreshold * 100)}%</span><small>6% + 0,7% × ранг</small></div>
+            <div><b>Умова</b><span>HP союзника &gt; {formatStat(skill.healthyAllyThreshold * 100)}% і HP ворога &lt; {formatStat(skill.woundedTargetThreshold * 100)}%</span><small>90% − 2% × рівень; 18% + 1,6% × рівень</small></div>
+            <div><b>Додаткова шкода</b><span>Шкода удару × {formatStat(skill.mercyDamageMultiplier * 100)}%</span><small>15% + 2% × рівень</small></div>
+            <div><b>Страта</b><span>Після удару HP ворога &lt; {formatStat(skill.executeThreshold * 100)}%</span><small>6% + 0,7% × рівень</small></div>
           </div>
         </> : <>
           <p>Змінює Віру під час бою: за знищеного ворога вона зростає швидше, а за смерть союзника — втрачається менше.</p>
           <div className="skill-calculations">
-            <div><b>Віра за перемогу</b><span>10 × {formatStat(skill.faithGainMultiplier)} = {formatStat(10 * skill.faithGainMultiplier)}</span><small>Множник: 1,3 + 0,03 × ранг, максимум 2</small></div>
-            <div><b>Втрата Віри</b><span>10 × {formatStat(skill.faithLossMultiplier)} = {formatStat(10 * skill.faithLossMultiplier)}</span><small>Множник: 1 − 0,02 × ранг, мінімум 0,5</small></div>
+            <div><b>Віра за перемогу</b><span>10 × {formatStat(skill.faithGainMultiplier)} = {formatStat(10 * skill.faithGainMultiplier)}</span><small>Множник: 1,3 + 0,03 × рівень, максимум 2</small></div>
+            <div><b>Втрата Віри</b><span>10 × {formatStat(skill.faithLossMultiplier)} = {formatStat(10 * skill.faithLossMultiplier)}</span><small>Множник: 1 − 0,02 × рівень, мінімум 0,5</small></div>
             <div><b>Присутність у бою</b><span>{formatStat(Math.min(0.7 + 0.015 * ((lord.level ?? 1) - 1), 0.9) * 100)}% базових бойових параметрів</span><small>70% + 1,5% × (рівень − 1), максимум 90%</small></div>
+            <div><b>Віра понад 80</b><span>Швидкість ×{formatStat(skill.highFaithSpeedMultiplier)} · опір +{formatStat(skill.highFaithResistanceBonus * 100)}% · крит +{formatStat(skill.highFaithCritBonus * 100)}%</span><small>Бонуси зростають разом із рівнем лорда</small></div>
+            <div><b>Віра нижче 20</b><span>Швидкість ×{formatStat(skill.lowFaithSpeedMultiplier)}</span><small>0,8 + 0,01 × рівень, максимум ×1</small></div>
           </div>
         </>}
-        {onSpendSkillPoint && <button className="spend-skill-point" disabled={!canSpendSkillPoint || (lord.skillPoints ?? 0) < 1} onClick={onSpendSkillPoint}>Підвищити ранг · 1 SP</button>}
-        {onSpendSkillPoint && !canSpendSkillPoint && <small className="skill-spend-note">Ранг можна підвищувати під час підготовки до бою.</small>}
+        {onSpendAttributePoint && <small className="skill-spend-note">Скілпойнти покращують базові характеристики. Унікальна навичка зростає тільки з рівнем лорда.</small>}
       </section>
     </article>
   </div>;
@@ -512,6 +515,7 @@ function App() {
   const lord = getRunLord(run);
   const hasBattleReadyUnit = run.army.some((member) => member.hp !== 0);
   const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
+  const leadershipLimit = run.economicLimit + (lord.attributes?.leadership ?? 0);
   const playbackEvent = battlePlayback?.battle.events[Math.max(0, battlePlayback.index - 1)] ?? null;
   const playbackState = battlePlayback ? getPlaybackState(battlePlayback) : null;
   const selectedTacticsMember = run.army.find((member) => member.instanceId === selectedTacticsMemberId) ?? null;
@@ -558,7 +562,7 @@ function App() {
       faith: Math.round(battle.battleSpirit),
       crystal: battle.allyCrystal,
       enemyArmy,
-      lordExperienceReward: victory ? 10 + (run.selectedPath.expReward ?? 0) : 0
+      lordExperienceReward: victory ? run.army.length * (run.selectedPath.expReward ?? 0) : 0
     };
     const hpByInstance = new Map(battle.allies.map((unit) => [unit.id, unit.hp]));
     const updatedArmy = run.army.map((member) => ({ ...member, hp: hpByInstance.get(member.instanceId) ?? 0 }));
@@ -631,9 +635,9 @@ function App() {
           <div className="lord-gallery-list">
             {availableLords.map((candidate) => <button className={`lord-gallery-card ${candidate.id === selectedLordId ? 'selected' : ''}`} key={candidate.id} onClick={() => setSelectedLordId(candidate.id)}><span className="mini-portrait"><img src={lordPortraits[candidate.id]} alt="" /></span><span><b>{candidate.name}</b><small>{candidate.description}</small></span></button>)}
           </div>
-          <article className="lord-selection-summary">
-            <LordProfileButton lord={selectedLord} onClick={() => setShowLordDetails(true)} label="Деталі лорда" />
-            <div><p className="eyebrow">Лорд Імперії</p><h2>{selectedLord.name}</h2><p>{selectedLord.description}</p><button className="menu-primary" onClick={startNewRun}>Обрати лорда й почати</button></div>
+          <article className="lord-detail">
+            <div className="lord-portrait" aria-label={`Портрет ${selectedLord.name}`}><img src={lordPortraits[selectedLord.id]} alt="" /></div>
+            <div><p className="eyebrow">Лорд Імперії</p><h2>{selectedLord.name}</h2><p>{selectedLord.description}</p><LordProfileButton lord={selectedLord} onClick={() => setShowLordDetails(true)} label="Деталі лорда" /><button className="menu-primary" onClick={startNewRun}>Обрати лорда й почати</button></div>
           </article>
           {showLordDetails && <LordDetails lord={selectedLord} onClose={() => setShowLordDetails(false)} />}
         </section>
@@ -658,7 +662,7 @@ function App() {
           <span><small>Життя</small><b>{run.lives}</b></span>
           <span><small>Золото</small><b>{run.gold}</b></span>
           <span><small>Рудники</small><b>{run.mines} <i>+{run.mines}/перемога</i></b></span>
-          <span><small>Лідерство</small><b>{leadershipUsed}/{run.economicLimit}</b></span>
+          <span><small>Лідерство</small><b>{leadershipUsed}/{leadershipLimit}</b></span>
           <span><small>Складність</small><b>{run.difficulty}</b></span>
         </div>
         {run.phase === 'hub' && <>
@@ -672,7 +676,7 @@ function App() {
               const instance = createUnitInstance(unit, battleLord);
               const mainAction = unit.combat.actions.find((action) => action.effectKind === 'damage') ?? unit.combat.actions[0];
               const mainActionValue = getActionValue(mainAction, battleLord);
-              const canRecruit = run.gold >= unit.combat.leadershipCost && leadershipUsed + unit.combat.leadershipCost <= run.economicLimit;
+              const canRecruit = run.gold >= unit.combat.leadershipCost && leadershipUsed + unit.combat.leadershipCost <= leadershipLimit;
               const unavailableReason = run.gold < unit.combat.leadershipCost ? 'Бракує золота' : 'Бракує лідерства';
               return <article className="recruit-card" key={unit.id}>
                 <UnitPortrait unitId={unit.id} className="recruit-portrait" />
@@ -777,7 +781,7 @@ function App() {
         </section>}
         {run.phase === 'game_over' && <button className="battle-button" onClick={() => setRun(createRun())}>Почати новий забіг</button>}
         {run.phase === 'hub' && hubView !== 'results' && <button className="reset-button" onClick={() => setRun(createRun())}>Скинути забіг</button>}
-        {showLordDetails && <LordDetails lord={lord} onClose={() => setShowLordDetails(false)} onSpendSkillPoint={() => setRun((current) => spendLordSkillPoint(current))} canSpendSkillPoint={run.phase === 'hub'} />}
+        {showLordDetails && <LordDetails lord={lord} onClose={() => setShowLordDetails(false)} onSpendAttributePoint={(attribute) => setRun((current) => spendLordAttributePoint(current, attribute))} canSpendAttributePoint={run.phase === 'hub'} />}
       </section>
     </main>
   );

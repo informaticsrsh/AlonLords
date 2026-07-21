@@ -26,9 +26,17 @@ export const empireLords = Object.freeze([
 ]);
 
 export const LORD_SKILL_POINTS_PER_LEVEL = 3;
+export const LORD_ATTRIBUTE_UPGRADES = Object.freeze({
+  leadership: { amount: 1 },
+  tactics: { amount: 1 },
+  battlePower: { amount: 1 },
+  vitality: { amount: 1 },
+  crystalVolume: { amount: 5 },
+  crystalRegenSpeed: { amount: 1 }
+});
 
 export function experienceToNextLordLevel(level = 1) {
-  return 100 + Math.max(0, level - 1) * 50;
+  return 50 + Math.max(0, level - 1) * 25;
 }
 
 export function createLordProgress() {
@@ -36,18 +44,24 @@ export function createLordProgress() {
     level: 1,
     experience: 0,
     skillPoints: 0,
-    // Every lord starts with the first rank of their signature skill.
-    skillRank: 1
+    attributes: Object.fromEntries(Object.keys(LORD_ATTRIBUTE_UPGRADES).map((attribute) => [attribute, 0]))
   };
 }
 
 export function normalizeLordProgress(progress) {
   const defaults = createLordProgress();
+  const attributes = Object.fromEntries(Object.keys(LORD_ATTRIBUTE_UPGRADES).map((attribute) => [
+    attribute,
+    Math.max(0, Number(progress?.attributes?.[attribute] ?? 0) || 0)
+  ]));
+  // Refund ranks spent in the short-lived signature-skill version of progression.
+  // That skill is now correctly driven only by the lord level.
+  const legacyRefund = Math.max(0, Number(progress?.skillRank ?? 1) - 1) || 0;
   return {
     level: Math.max(1, Number(progress?.level ?? defaults.level)),
     experience: Math.max(0, Number(progress?.experience ?? defaults.experience)),
-    skillPoints: Math.max(0, Number(progress?.skillPoints ?? defaults.skillPoints)),
-    skillRank: Math.max(1, Number(progress?.skillRank ?? defaults.skillRank))
+    skillPoints: Math.max(0, Number(progress?.skillPoints ?? defaults.skillPoints)) + legacyRefund,
+    attributes
   };
 }
 
@@ -63,20 +77,24 @@ export function addLordExperience(progress, amount = 0) {
 }
 
 export function getLordSkillEffects(lord) {
-  const rank = Math.max(1, Number(lord?.skillRank ?? lord?.level ?? 1));
+  const level = Math.max(1, Number(lord?.level ?? 1));
   if (lord?.id === 'empire_lord_arthur') {
     return {
-      rank,
-      healthyAllyThreshold: Math.max(0.5, (90 - 2 * rank) / 100),
-      woundedTargetThreshold: Math.min(0.49, (18 + 1.6 * rank) / 100),
-      mercyDamageMultiplier: (15 + 2 * rank) / 100,
-      executeThreshold: Math.min(0.19, (6 + 0.7 * rank) / 100)
+      level,
+      healthyAllyThreshold: Math.max(0.5, (90 - 2 * level) / 100),
+      woundedTargetThreshold: Math.min(0.49, (18 + 1.6 * level) / 100),
+      mercyDamageMultiplier: (15 + 2 * level) / 100,
+      executeThreshold: Math.min(0.19, (6 + 0.7 * level) / 100)
     };
   }
   return {
-    rank,
-    faithGainMultiplier: Math.min(1.3 + 0.03 * rank, 2),
-    faithLossMultiplier: Math.max(0.5, 1 - 0.02 * rank)
+    level,
+    faithGainMultiplier: Math.min(1.3 + 0.03 * level, 2),
+    faithLossMultiplier: Math.max(0.5, 1 - 0.02 * level),
+    highFaithSpeedMultiplier: Math.min(1.5, 1.2 + 0.015 * level),
+    highFaithResistanceBonus: 0.005 * level,
+    highFaithCritBonus: 0.003 * level,
+    lowFaithSpeedMultiplier: Math.min(1, 0.8 + 0.01 * level)
   };
 }
 
