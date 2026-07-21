@@ -230,6 +230,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid #f5c46b; outline
 .campaign-page .grid { max-width: 700px; padding: 10px; border: 1px solid rgba(135, 105, 129, .42); border-radius: 12px; background: #17131d; }
 .campaign-page .cell { min-height: 82px; border-color: #574557; background: linear-gradient(135deg, #342a37, #251e2c); }
 .campaign-page .cell:hover { background: #4c3438; }
+.deployment-lanes { display: flex; justify-content: space-between; max-width: 700px; margin: 10px auto 4px; padding: 0 9px; color: #a7b9dc; font-size: .66rem; font-weight: 900; letter-spacing: .09em; }.deployment-lanes b { color: #ffe783; }
+.campaign-page .grid .frontline-cell { border-color: #ffe46c; background: linear-gradient(145deg, rgba(159, 100, 51, .65), rgba(103, 51, 73, .72)); box-shadow: inset 0 0 0 1px rgba(255, 237, 148, .4), 0 0 13px rgba(255, 199, 89, .23); }.campaign-page .grid .frontline-cell small { color: #ffec9c; font-weight: 900; letter-spacing: .08em; }
 .roster .enemy-choice { min-height: 138px; padding: 16px; border-color: #76555f; background: linear-gradient(145deg, #39272e, #2c2029); }
 .roster .enemy-choice:hover { border-color: #dc7b67; background: linear-gradient(145deg, #4a2d31, #30212a); }
 .enemy-choice b { color: #ffdfc9; font: 700 1.08rem Georgia, serif; }
@@ -458,10 +460,12 @@ button { font-weight: 700; }
 .formation-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .formation-heading h4 { margin: 0; color: #eefaff; font: 700 .88rem Georgia, serif; }
 .formation-heading span { padding: 3px 7px; border-radius: 20px; color: #f7fbff; background: rgba(5, 13, 69, .38); font-size: .68rem; }
+.formation-lanes { display: flex; justify-content: space-between; margin: -2px 1px 5px; color: #b9d7ff; font-size: .54rem; font-weight: 900; letter-spacing: .07em; }.formation-lanes b { color: #ffe88b; }.formation.enemy .formation-lanes { color: #ffe0ef; }
 .formation-grid { gap: 6px; }
 .formation-cell { position: relative; display: grid; min-height: 106px; grid-template-rows: minmax(0, 1fr) auto auto; align-content: stretch; gap: 3px; padding: 4px; overflow: hidden; border-color: rgba(165, 223, 255, .27); border-radius: 9px; background: rgba(7, 19, 78, .3); }
 .formation-cell.occupied { border-color: rgba(211, 241, 255, .74); background: linear-gradient(145deg, rgba(110, 180, 239, .36), rgba(42, 55, 153, .54)); box-shadow: inset 0 1px rgba(255,255,255,.2); }
 .formation:last-child .formation-cell.occupied { border-color: rgba(255, 200, 227, .7); background: linear-gradient(145deg, rgba(212, 94, 164, .35), rgba(78, 37, 125, .57)); }
+.formation .frontline-cell { border-color: #ffe574 !important; background: linear-gradient(145deg, rgba(171, 116, 50, .52), rgba(122, 65, 104, .63)) !important; box-shadow: inset 0 0 0 1px rgba(255, 237, 154, .48), 0 0 16px rgba(255, 208, 91, .38); }.formation.enemy .frontline-cell { background: linear-gradient(215deg, rgba(194, 91, 117, .57), rgba(124, 59, 109, .68)) !important; }
 .battle-portrait { width: 100%; height: 62px; border: 0; border-radius: 6px; background-size: 400% 200%; box-shadow: none; opacity: .95; }
 .formation-cell b { position: relative; z-index: 1; overflow: hidden; color: #fffdf3; font-size: .58rem; line-height: 1; text-align: center; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px #0a1557; }
 .formation-cell i { position: relative; z-index: 1; height: 6px; border: 1px solid rgba(255,255,255,.25); background: rgba(18, 10, 45, .72); }

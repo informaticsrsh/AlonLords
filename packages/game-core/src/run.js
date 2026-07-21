@@ -104,7 +104,13 @@ export function generateEnemyArmy({ pathId, difficulty = 1, seed = 1 }) {
   const occupied = new Set();
   const units = army.map((unit) => ({ ...unit, position: placeEnemyUnit(unit, occupied) })).filter((unit) => unit.position);
   const leadershipUsed = units.reduce((total, unit) => total + unit.combat.leadershipCost, 0);
-  return { label: profile.label, leadershipBudget, leadershipUsed, units };
+  // The enemy crystal grows with the actual force fielded, not just the chosen path.
+  // This keeps mana skills viable as stronger compositions unlock more casters.
+  const crystal = {
+    manaMax: 40 + leadershipUsed * 2 + (difficulty - 1) * 5,
+    manaRegen: 6 + Math.ceil(leadershipUsed / 3) + (difficulty - 1) * 2
+  };
+  return { label: profile.label, leadershipBudget, leadershipUsed, crystal, units };
 }
 
 function getEmpireUnitsByTier(tier) {

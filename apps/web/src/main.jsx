@@ -314,9 +314,10 @@ function BattleUnitCard({ unit, activeId, targetId }) {
   </article>;
 }
 
-function BattleFormation({ title, units, activeId, targetId, event, playback }) {
+function BattleFormation({ title, side, units, activeId, targetId, event, playback }) {
   const unitAt = (row, column) => units.find((unit) => unit.position?.row === row && unit.position?.column === column);
-  return <section className="formation"><header className="formation-heading"><h4>{title}</h4><span>{units.filter((unit) => unit.hp > 0).length}/{units.length}</span></header><div className="formation-grid">
+  const frontlineColumn = side === 'ally' ? 4 : 0;
+  return <section className={`formation ${side}`}><header className="formation-heading"><h4>{title}</h4><span>{units.filter((unit) => unit.hp > 0).length}/{units.length}</span></header><div className="formation-lanes"><span>{side === 'ally' ? 'Тил' : '← Фронт'}</span><b>{side === 'ally' ? 'Фронт →' : 'Тил'}</b></div><div className="formation-grid">
     {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
       const unit = unitAt(row, column);
       const hpPercent = unit?.maxHp ? Math.max(0, Math.min(100, unit.hp / unit.maxHp * 100)) : 0;
@@ -324,7 +325,7 @@ function BattleFormation({ title, units, activeId, targetId, event, playback }) 
       const isTarget = unit?.id === targetId;
       const info = battleEventInfo(event);
       const timing = unit ? nextActionTiming(playback, unit.id) : null;
-      return <div className={`formation-cell ${unit ? 'occupied' : ''} ${isActor ? 'acting' : ''} ${isTarget ? 'targeted' : ''}`} key={`${row}-${column}`}>
+      return <div className={`formation-cell ${column === frontlineColumn ? 'frontline-cell' : ''} ${unit ? 'occupied' : ''} ${isActor ? 'acting' : ''} ${isTarget ? 'targeted' : ''}`} key={`${row}-${column}`}>
         {unit && <><UnitPortrait unitId={unit.unitId} className="battle-portrait" />
           <div className="unit-effect-icons" aria-label="Активні ефекти">{(unit.effects ?? []).map((effect, index) => <span className={effect.kind} key={`${effect.id}-${index}`} title={`${effect.id}${effect.duration !== null ? ` · ${effect.duration} ход.` : ''}`}>{effectIcon(effect)}<small>{effect.duration !== null ? effect.duration : ''}</small></span>)}</div>
           {isActor && <span className={`battle-cell-badge ${info.kind} ${info.damageType ? `damage-${info.damageType}` : ''}`}>{info.icon} {info.label}</span>}
@@ -480,9 +481,9 @@ function App() {
       return unit;
     });
     const enemyArmy = generateEnemyArmy({ pathId: run.selectedPath.id, difficulty: run.difficulty, seed: formationSeed(run, run.selectedPath) });
-    const enemyLord = { vitality: 0, battlePower: 0, crystalRegenSpeed: 0 };
+    const enemyLord = { vitality: 0, battlePower: 0, crystalVolume: enemyArmy.crystal.manaMax, crystalRegenSpeed: enemyArmy.crystal.manaRegen };
     const enemiesInBattle = enemyArmy.units.map((member) => ({ ...createUnitInstance(getEmpireUnit(member.unitId), enemyLord), id: member.id, unitId: member.unitId, position: member.position, lord: enemyLord }));
-    const battle = simulateBattle({ allies: alliesInBattle, enemies: enemiesInBattle, lord, seed: run.seed + run.difficulty });
+    const battle = simulateBattle({ allies: alliesInBattle, enemies: enemiesInBattle, lord, enemyCrystal: enemyArmy.crystal, seed: run.seed + run.difficulty });
     const victory = battle.winner === 'ally';
     const report = {
       victory,
@@ -653,10 +654,11 @@ function App() {
             <div className="roster">
               {run.army.map((member) => <button className={selectedMemberId === member.instanceId ? 'selected' : ''} key={member.instanceId} onClick={() => setSelectedMemberId(member.instanceId)}>{getEmpireUnit(member.unitId).name}</button>)}
             </div>
+            <div className="deployment-lanes" aria-hidden="true"><span>ТИЛ</span><b>ФРОНТ → ВОРОГ</b></div>
             <div className="grid" role="grid" aria-label="Сітка розміщення армії">
               {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
                 const placement = placedAt(row, column);
-                return <button className="cell" key={`${row}-${column}`} onClick={() => selectCell(row, column)}>{placement?.unit.name ?? ''}</button>;
+                return <button className={`cell ${column === 4 ? 'frontline-cell' : ''}`} key={`${row}-${column}`} aria-label={`${column === 4 ? 'Фронтлайн. ' : ''}${placement?.unit.name ?? 'Порожня клітинка'}`} onClick={() => selectCell(row, column)}>{column === 4 && !placement ? <small>ФРОНТ</small> : placement?.unit.name ?? ''}</button>;
               }))}
             </div>
           </section>
@@ -665,7 +667,7 @@ function App() {
           <div className="roster">
             {paths.map((path) => {
               const enemyArmy = generateEnemyArmy({ pathId: path.id, difficulty: run.difficulty, seed: formationSeed(run, path) });
-              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {path.goldReward} золота · загроза {path.threat} →</em></button>;
+              return <button className="enemy-choice" key={path.id} disabled={!hasBattleReadyUnit} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {path.goldReward} золота · загроза {path.threat} →</em></button>;
             })}
           </div>
           <button className="reset-button" onClick={() => setHubView('hub')}>← Повернутися до Hub</button>
@@ -676,7 +678,7 @@ function App() {
           <div className="battle-arena-hud">
             <div className="arena-team ally"><span>✦</span><b>Імперія</b><small>Віра</small><i><em style={{ width: `${Math.max(0, Math.min(100, playbackState.faith))}%` }} /></i><strong>{Math.round(playbackState.faith)}</strong></div>
             <div className="arena-round"><span>АВТОБІЙ</span><b>VS</b><small>Раунд {playbackEvent?.round ?? 1}</small></div>
-            <div className="arena-team enemy"><span>⚔</span><b>Рейдери</b><small>Кристал</small><i><em style={{ width: `${Math.max(0, Math.min(100, (battlePlayback.battle.allyCrystal.mana / battlePlayback.battle.allyCrystal.manaMax) * 100))}%` }} /></i><strong>{Math.round(battlePlayback.battle.allyCrystal.mana)}</strong></div>
+            <div className="arena-team enemy"><span>⚔</span><b>Рейдери</b><small>Ворожий кристал</small><i><em style={{ width: `${Math.max(0, Math.min(100, (battlePlayback.battle.enemyCrystal.mana / battlePlayback.battle.enemyCrystal.manaMax) * 100))}%` }} /></i><strong>{Math.round(battlePlayback.battle.enemyCrystal.mana)}</strong></div>
           </div>
           <div className="playback-heading"><div><b>{battlePlayback.isReplay ? 'Повтор бою' : 'Автобій триває'}</b><span>Подія {Math.min(battlePlayback.index, battlePlayback.battle.events.length)}/{battlePlayback.battle.events.length}</span></div><strong>{playbackEvent ? describeBattleEvent(playbackEvent) : 'Армії займають позиції…'}</strong><em>Віра: {Math.round(playbackState.faith)}/100 · Кристал: {Math.round(battlePlayback.battle.allyCrystal.mana)}/{battlePlayback.battle.allyCrystal.manaMax}</em></div>
           <div className="playback-controls" aria-label="Керування повтором бою">
@@ -687,9 +689,9 @@ function App() {
           </div>
           <BattleActionBanner event={playbackEvent} units={playbackState.units} />
           <div className="battlefield" aria-label="Поле бою з розміщенням армій">
-            <BattleFormation title="Імперія" units={battlePlayback.initialAllies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
+            <BattleFormation title="Імперія" side="ally" units={battlePlayback.initialAllies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
             <strong className="battlefield-versus">VS</strong>
-            <BattleFormation title="Ворожа армія Імперії" units={battlePlayback.initialEnemies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
+            <BattleFormation title="Ворожа армія Імперії" side="enemy" units={battlePlayback.initialEnemies.map((unit) => playbackState.units.get(unit.id))} activeId={playbackEvent?.attackerId} targetId={playbackEvent?.targetId ?? playbackEvent?.unitId} event={playbackEvent} playback={battlePlayback} />
           </div>
           <div className={`action-flash ${playbackEvent?.type ?? 'ready'}`}>{playbackEvent?.type === 'heal' ? '✦ Зцілення' : playbackEvent?.type === 'control' ? '⚡ Контроль' : playbackEvent?.type === 'death' ? '☠ Загибель' : '✹ Удар'}</div>
         </section>}

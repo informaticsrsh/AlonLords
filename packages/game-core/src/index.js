@@ -89,7 +89,7 @@ function firstLiving(units) {
  * Мінімальний детермінований автобій для вертикального зрізу.
  * Кожен живий юніт атакує першого живого суперника за порядком у складі.
  */
-export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_lord_henrik'), seed = 1, maxRounds = 50, allyFormationColumns, enemyFormationColumns }) {
+export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_lord_henrik'), seed = 1, maxRounds = 50, allyFormationColumns, enemyFormationColumns, enemyCrystal }) {
   const rng = createRng(seed);
   const battleLord = getBattleLordStats(lord);
   const initialAllies = allies.map((unit) => ({ ...cloneUnit(unit), lord: unit.lord ?? battleLord, formationColumns: unit.formationColumns ?? allyFormationColumns }));
@@ -104,7 +104,11 @@ export function simulateBattle({ allies, enemies, lord = getEmpireLord('empire_l
     winner: null,
     battleSpirit: 50,
     allyCrystal: { mana: battleLord.crystalVolume, manaMax: battleLord.crystalVolume, manaRegen: battleLord.crystalRegenSpeed },
-    enemyCrystal: { mana: 0, manaMax: 0, manaRegen: 0 }
+    enemyCrystal: {
+      mana: enemyCrystal?.mana ?? enemyCrystal?.manaMax ?? 0,
+      manaMax: enemyCrystal?.manaMax ?? 0,
+      manaRegen: enemyCrystal?.manaRegen ?? 0
+    }
   };
 
   while (!state.winner && state.round < maxRounds) {

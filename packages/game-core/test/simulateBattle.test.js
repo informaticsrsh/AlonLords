@@ -411,6 +411,9 @@ describe('run loop', () => {
     expect(safe.leadershipUsed).toBe(4);
     expect(risky.leadershipBudget).toBe(18);
     expect(risky.leadershipUsed).toBe(risky.leadershipBudget);
+    expect(safe.crystal).toMatchObject({ manaMax: 48, manaRegen: 8 });
+    expect(risky.crystal.manaMax).toBeGreaterThan(safe.crystal.manaMax);
+    expect(risky.crystal.manaRegen).toBeGreaterThan(safe.crystal.manaRegen);
     const repeats = risky.units.reduce((counts, unit) => counts.set(unit.unitId, (counts.get(unit.unitId) ?? 0) + 1), new Map());
     expect(Math.max(...repeats.values())).toBeLessThanOrEqual(2);
     expect(new Set(risky.units.map((unit) => `${unit.position.row}:${unit.position.column}`)).size).toBe(risky.units.length);
@@ -419,5 +422,19 @@ describe('run loop', () => {
       generateEnemyArmy({ pathId: 'risky', difficulty: 3, seed }).units.map((unit) => unit.unitId).sort().join(',')
     )));
     expect(compositions.size).toBeGreaterThan(1);
+  });
+
+  it('spends a supplied enemy crystal on enemy skills', () => {
+    const allyStrike = { id: 'ally_strike', type: 'physical', effectKind: 'damage', rangeType: 'ranged', formula: { base: 1, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 } };
+    const enemySpell = { id: 'enemy_spell', type: 'lightning', effectKind: 'damage', rangeType: 'ranged', formula: { base: 5, lordStat: 'battlePower', multiplier: 0 }, targetRule: { side: 'enemy', selection: 'nearest', count: 1 }, manaCost: 10 };
+    const result = simulateBattle({
+      allies: [{ id: 'ally', maxHp: 30, actions: [allyStrike] }],
+      enemies: [{ id: 'enemy', maxHp: 30, actions: [enemySpell] }],
+      enemyCrystal: { manaMax: 10, manaRegen: 0 },
+      maxRounds: 1
+    });
+
+    expect(result.events).toContainEqual(expect.objectContaining({ attackerId: 'enemy', actionId: 'enemy_spell', damageType: 'lightning' }));
+    expect(result.enemyCrystal.mana).toBe(0);
   });
 });
