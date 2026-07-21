@@ -178,7 +178,17 @@ export function createDefaultTactics(unit) {
   };
 }
 
-export function createRun({ lordId = 'empire_lord_henrik', seed = 1 } = {}) {
+function createRunSeed() {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.getRandomValues) {
+    const values = new Uint32Array(1);
+    cryptoApi.getRandomValues(values);
+    return values[0] || 1;
+  }
+  return Math.floor(Math.random() * 0xffffffff) + 1;
+}
+
+export function createRun({ lordId = 'empire_lord_henrik', seed = createRunSeed() } = {}) {
   const lord = getEmpireLord(lordId) ?? getEmpireLord('empire_lord_henrik');
   return {
     lordId: lord.id,
