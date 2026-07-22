@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addLordExperience, applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitUnlockProgress, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources, spendLordAttributePoint } from '../src/index.js';
+import { addLordExperience, applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, canPlaceUnit, choosePath, createGrid, createPaths, createRun, createUnitInstance, empireUnits, evaluateFormula, evolveUnit, expandAreaTargets, finishBattle, generateEnemyArmy, getAccessibleTargets, getBattleLordStats, getEmpireLord, getEmpireUnit, getEvolutionRequirements, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitExperienceCap, getUnitExperienceMultiplier, getUnitUnlockProgress, healUnit, isActionUsable, moveUnit, placeUnit, recruitUnit, resolveAction, reviveUnit, selectAutomaticAction, simulateBattle, simulateBattleSeries, spendActionResources, spendLordAttributePoint } from '../src/index.js';
 
 const allies = [
   { id: 'guard', maxHp: 24, attack: 7, critChance: 0.2 }
@@ -403,6 +403,25 @@ describe('run loop', () => {
     expect(getRunLord(completed)).toMatchObject({ experience: 40, skillPoints: 0 });
   });
 
+  it('caps unit experience at each evolution threshold and halves its gain at every tier', () => {
+    const unitIds = ['empire_archer_t1', 'empire_archer_t2_sniper', 'empire_archer_t3_executioner', 'empire_archer_t4_royal_marksman'];
+    const run = {
+      ...createRun(),
+      phase: 'battle',
+      army: unitIds.map((unitId, index) => ({ instanceId: `unit-${index}`, unitId, hp: 1, exp: 0 }))
+    };
+    const completed = finishBattle(run, { victory: true, battleExperienceReward: 160 });
+    const capped = finishBattle({ ...run, army: [{ ...run.army[0], exp: 90 }] }, { victory: true, battleExperienceReward: 40 });
+
+    expect(completed.army.map((member) => member.exp)).toEqual([40, 20, 10, 0]);
+    expect(capped.army[0].exp).toBe(100);
+    expect(getUnitExperienceCap(getEmpireUnit('empire_archer_t1'))).toBe(100);
+    expect(getUnitExperienceCap(getEmpireUnit('empire_archer_t2_sniper'))).toBe(220);
+    expect(getUnitExperienceCap(getEmpireUnit('empire_archer_t3_executioner'))).toBe(450);
+    expect(getUnitExperienceCap(getEmpireUnit('empire_archer_t4_royal_marksman'))).toBe(0);
+    expect(getUnitExperienceMultiplier(getEmpireUnit('empire_archer_t3_executioner'))).toBe(0.25);
+  });
+
   it('does not award battle experience to dead units', () => {
     const onceRecruited = recruitUnit(createRun(), 'empire_archer_t1');
     const recruited = recruitUnit(onceRecruited, 'empire_infantry_t1');
@@ -416,6 +435,35 @@ describe('run loop', () => {
     expect(getRunLord(completed)).toMatchObject({ experience: 40 });
   });
 
+  it('awards experience from generated tier-one enemies and keeps it through consecutive battles', () => {
+    let run = recruitUnit(createRun({ seed: 1 }), 'empire_archer_t1');
+
+    const finishGeneratedBattle = (currentRun) => {
+      const path = createPaths(currentRun.difficulty, currentRun.seed)[0];
+      const enemies = generateEnemyArmy({ pathId: path.id, difficulty: currentRun.difficulty, seed: currentRun.seed });
+      const reward = enemies.units
+        .map((unit) => createUnitInstance(unit, { vitality: 0, battlePower: 0, crystalRegenSpeed: 0 }))
+        .reduce((total, unit) => total + unit.experienceRewardOnKill, 0);
+      return finishBattle(choosePath(currentRun, path), {
+        victory: true,
+        army: currentRun.army.map((member) => ({ ...member, hp: 1 })),
+        battleExperienceReward: reward
+      });
+    };
+
+    run = finishGeneratedBattle(run);
+    const firstBattleExp = run.army[0].exp;
+    const firstLord = getRunLord(run);
+    expect(firstBattleExp).toBeGreaterThan(0);
+    expect(firstLord.level > 1 || firstLord.experience > 0).toBe(true);
+
+    run = finishGeneratedBattle(run);
+    const secondLord = getRunLord(run);
+    expect(run.army[0].exp).toBeGreaterThan(firstBattleExp);
+    expect(secondLord.level).toBeGreaterThanOrEqual(firstLord.level);
+    expect(secondLord.level > firstLord.level || secondLord.experience > firstLord.experience).toBe(true);
+  });
+
   it('recruits in Hub, enters battle through a path, and grants its reward on victory', () => {
     const run = createRun();
     const recruited = recruitUnit(run, 'empire_archer_t1');
@@ -424,7 +472,36 @@ describe('run loop', () => {
 
     expect(recruited.army).toMatchObject([{ unitId: 'empire_archer_t1', hp: null, exp: 0, position: null }]);
     expect(inBattle.phase).toBe('battle');
-    expect(completed).toMatchObject({ phase: 'hub', difficulty: 2, gold: 23 });
+    expect(completed).toMatchObject({ phase: 'hub', difficulty: 1.5, gold: 23 });
+  });
+
+  it('allows a lord to recruit beyond their leadership, while reservists do not gain battle experience', () => {
+    let run = { ...createRun(), gold: 100 };
+    for (let index = 0; index < 7; index += 1) run = recruitUnit(run, 'empire_archer_t1');
+
+    expect(run.army).toHaveLength(7);
+    expect(run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0)).toBeGreaterThan(run.economicLimit);
+
+    const completed = finishBattle(choosePath(run, { id: 'safe' }), {
+      victory: true,
+      army: run.army.map((member, index) => ({ ...member, hp: 10 })),
+      battleExperienceReward: 40,
+      participatedInstanceIds: [run.army[0].instanceId, run.army[1].instanceId]
+    });
+    expect(completed.army.map((member) => member.exp)).toEqual([20, 20, 0, 0, 0, 0, 0]);
+  });
+
+  it('advances difficulty at half the previous rate and keeps a five-battle loss rollback', () => {
+    const afterVictory = finishBattle({ ...createRun(), selectedPath: { id: 'safe' } }, { victory: true });
+    const afterFiveVictories = Array.from({ length: 5 }).reduce(
+      (run) => finishBattle({ ...run, selectedPath: { id: 'safe' } }, { victory: true }),
+      createRun()
+    );
+    const afterDefeat = finishBattle({ ...afterFiveVictories, selectedPath: { id: 'safe' } }, { victory: false });
+
+    expect(afterVictory.difficulty).toBe(1.5);
+    expect(afterFiveVictories.difficulty).toBe(3.5);
+    expect(afterDefeat.difficulty).toBe(1);
   });
 
   it('limits recruitment to each lord’s starting roster', () => {
@@ -470,7 +547,19 @@ describe('run loop', () => {
 
     expect(healed.army[0].hp).toBe(36);
     expect(evolved.army[0]).toMatchObject({ unitId: 'empire_archer_t2_sniper', exp: 0, hp: null });
+    expect(evolved.gold).toBe(5);
     expect(revived.army[0].hp).toBe(18);
+  });
+
+  it('requires both the published experience threshold and gold to evolve', () => {
+    const recruited = recruitUnit(createRun(), 'empire_archer_t1');
+    const member = recruited.army[0];
+    const readyButPoor = { ...recruited, gold: 9, army: [{ ...member, exp: 100 }] };
+
+    expect(getEvolutionRequirements(getEmpireUnit('empire_archer_t1'))).toEqual({ experience: 100, gold: 10 });
+    expect(getEvolutionRequirements(getEmpireUnit('empire_archer_t2_sniper'))).toEqual({ experience: 220, gold: 20 });
+    expect(getEvolutionRequirements(getEmpireUnit('empire_archer_t3_executioner'))).toEqual({ experience: 450, gold: 35 });
+    expect(evolveUnit(readyButPoor, member.instanceId, 'empire_archer_t2_sniper')).toBe(readyButPoor);
   });
 
   it('creates deterministic random rewards scaled from each path leadership budget', () => {

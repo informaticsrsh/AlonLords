@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitUnlockProgress, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
+import { choosePath, createDefaultTactics, createGrid, createPaths, createRun, createUnitInstance, empireLords, empireUnits, evolveUnit, finishBattle, generateEnemyArmy, getBattleLordStats, getEmpireLord, getEmpireUnit, getEvolutionRequirements, getLordSkillEffects, getRecruitableUnits, getRunLord, getUnitExperienceCap, getUnitExperienceMultiplier, getUnitUnlockProgress, healUnit, moveUnit, recruitUnit, reviveUnit, simulateBattle, spendLordAttributePoint, updateArmyMember } from '@empire/game-core';
 import './styles.css';
 
 const runStorageKey = 'empire-lords.run.v1';
@@ -306,16 +306,78 @@ function LordDetails({ lord, onClose, onSpendAttributePoint, canSpendAttributePo
   </div>;
 }
 
-function UnitDetails({ unit, lord, onClose }) {
+function UnitEvolutionTree({ rootUnit, lord, onClose, onBack, onOpenDetails }) {
+  const battleLord = getBattleLordStats(lord);
+
+  const renderNode = (node, requirement, path = []) => {
+    const instance = createUnitInstance(node, battleLord);
+    const mainAction = node.combat.actions.find((action) => action.effectKind === 'damage') ?? node.combat.actions[0];
+    const mainActionValue = getActionValue(mainAction, battleLord);
+    const nextRequirement = getEvolutionRequirements(node);
+    const children = (node.combat.evolutions ?? [])
+      .map((targetId) => getEmpireUnit(targetId))
+      .filter((target) => target && !path.includes(target.id));
+
+    return <li className="evolution-tree-node" key={node.id}>
+      <article className="evolution-node-card">
+        <header>
+          <UnitPortrait unitId={node.id} className="evolution-node-portrait" />
+          <div><small>{requirement ? `Розвиток за ${requirement.experience} EXP · ${requirement.gold} золота` : 'Поточна форма'}</small><b>{node.name}</b><span>{roleNames[node.role] ?? node.role} · T{node.tier}</span></div>
+        </header>
+        <div className="evolution-node-overview">
+          <span>HP <b>{formatStat(instance.maxHp)}</b></span>
+          <span>Швидкість <b>{node.combat.attackSpeed}</b></span>
+          <span>Лідерство <b>{node.combat.leadershipCost}</b></span>
+        </div>
+        <p><b>{mainAction.name}</b>{mainActionValue !== null ? ` · ${effectNames[mainAction.effectKind] ?? 'Ефект'} ${formatStat(mainActionValue)}` : ''}</p>
+        <details className="evolution-node-details">
+          <summary>Переглянути деталі</summary>
+          <div>
+            <span><b>Уміння</b>{node.combat.actions.map((action) => `${action.name}${getActionValue(action, battleLord) !== null ? ` (${formatStat(getActionValue(action, battleLord))})` : ''}`).join(' · ')}</span>
+            <span><b>Пасивні здібності</b>{node.combat.passives?.length ? node.combat.passives.map((passive) => passive.id).join(' · ') : 'Немає'}</span>
+            <span><b>Розмір</b>{node.gridFootprint.rows}×{node.gridFootprint.columns}</span>
+          </div>
+        </details>
+        <button className="evolution-open-details" onClick={() => onOpenDetails(node.id)}>Деталі</button>
+      </article>
+      {children.length > 0
+        ? <ol className="evolution-tree-branch">{children.map((child) => renderNode(child, nextRequirement, [...path, node.id]))}</ol>
+        : <p className="evolution-terminal">Максимальний рівень розвитку</p>}
+    </li>;
+  };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <article className="unit-evolution-modal modal-dialog" role="dialog" aria-modal="true" aria-label={`Дерево розвитку юніта ${rootUnit.name}`}>
+    <header className="modal-heading evolution-modal-header">
+      <div className="unit-details-title"><UnitPortrait unitId={rootUnit.id} className="unit-details-portrait" /><div><p className="eyebrow">Дерево розвитку</p><h3>{rootUnit.name}</h3><span>Оберіть форму, щоб переглянути її повну картку.</span></div></div>
+      <div className="evolution-modal-actions"><button className="evolution-back" onClick={onBack}>← Деталі юніта</button><button className="details-close" onClick={onClose} aria-label="Закрити дерево розвитку">×</button></div>
+    </header>
+    <section className="unit-details-section unit-evolution-tree">
+    <h4>Дерево розвитку</h4>
+    <p className="evolution-tree-intro">Перегляньте усі доступні гілки. У картці показані характеристики для поточних параметрів лорда «{lord.name}».</p>
+    <ol className="evolution-tree-root">{renderNode(rootUnit, null)}</ol>
+    </section>
+    </article>
+  </div>;
+}
+
+function UnitDetails({ unit: initialUnit, lord, member: sourceMember, onClose }) {
+  const [modalView, setModalView] = useState('details');
+  const [viewedUnitId, setViewedUnitId] = useState(initialUnit.id);
+  const unit = getEmpireUnit(viewedUnitId) ?? initialUnit;
+  const member = sourceMember?.unitId === unit.id ? sourceMember : null;
   const battleLord = getBattleLordStats(lord);
   const instance = createUnitInstance(unit, battleLord);
   const hpBreakdown = getFormulaBreakdown(unit.combat.hpFormula, battleLord);
   const affectedStats = [...new Set([unit.combat.hpFormula?.lordStat, ...unit.combat.actions.map((action) => action.formula?.lordStat)].filter(Boolean))];
+  const experienceCap = getUnitExperienceCap(unit);
+  const currentHp = member ? member.hp ?? instance.maxHp : null;
   useEffect(() => {
     const closeOnEscape = (event) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
+  if (modalView === 'tree') return <UnitEvolutionTree rootUnit={unit} lord={lord} onClose={onClose} onBack={() => setModalView('details')} onOpenDetails={(unitId) => { setViewedUnitId(unitId); setModalView('details'); }} />;
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <article className="unit-details modal-dialog" role="dialog" aria-modal="true" aria-label={`Деталі юніта ${unit.name}`}>
     <div className="unit-details-heading">
@@ -329,6 +391,14 @@ function UnitDetails({ unit, lord, onClose }) {
       <div><dt>{'\u0420\u043e\u043b\u044c'}</dt><dd>{roleNames[unit.role] ?? unit.role}</dd></div>
       <div><dt>{'\u0420\u043e\u0437\u043c\u0456\u0440'}</dt><dd>{unit.gridFootprint.rows}×{unit.gridFootprint.columns}</dd></div>
     </dl>
+    {member && <section className="unit-details-section unit-instance-status" aria-label="Поточний стан юніта">
+      <h4>Поточний стан</h4>
+      <div>
+        <span><small>Здоров’я</small><b>{formatStat(currentHp)} / {formatStat(instance.maxHp)}</b></span>
+        <span><small>Досвід</small><b>{experienceCap ? `${formatStat(member.exp ?? 0)} / ${formatStat(experienceCap)}` : 'Максимальний тір'}</b></span>
+        <span><small>Статус</small><b>{member.position ? 'На полі' : 'У резерві'}</b></span>
+      </div>
+    </section>}
     <section className="unit-details-section formula-section">
       <h4>Звідки беруться характеристики</h4>
       <p className="formula-intro">Значення нижче розраховано для лорда «{lord.name}». У бою використовуються його поточні бойові параметри.</p>
@@ -358,6 +428,7 @@ function UnitDetails({ unit, lord, onClose }) {
       <h4>{'\u041f\u0430\u0441\u0438\u0432\u043d\u0456 \u0437\u0434\u0456\u0431\u043d\u043e\u0441\u0442\u0456'}</h4>
       <ul>{unit.combat.passives.map((passive) => <li key={passive.id}><b>{passive.id}</b>{passive.effect ? ` — ${passive.effect}` : ''}{passive.trigger ? ` (${passive.trigger})` : ''}</li>)}</ul>
     </section>}
+    <button className="open-evolution-tree" onClick={() => setModalView('tree')}>Дерево розвитку</button>
     </article>
   </div>;
 }
@@ -548,7 +619,14 @@ function loadRun() {
 function gridFromRun(run) {
   return {
     ...createGrid({ rows: 3, columns: 5 }),
-    placements: run.army.flatMap((member) => member.position ? [{ unit: { ...getEmpireUnit(member.unitId), id: member.instanceId }, position: member.position }] : [])
+    // The board is derived from the current, living army. This prevents a
+    // fallen, evolved, or otherwise removed unit from leaving a stale marker.
+    placements: run.army.flatMap((member) => {
+      const unit = getEmpireUnit(member.unitId);
+      return member.hp !== 0 && member.position && unit
+        ? [{ unit: { ...unit, id: member.instanceId }, position: member.position }]
+        : [];
+    })
   };
 }
 
@@ -563,18 +641,25 @@ function App() {
   const [selectedFactionId, setSelectedFactionId] = useState('empire');
   const [hubView, setHubView] = useState('hub');
   const [selectedRecruitUnitId, setSelectedRecruitUnitId] = useState('');
+  const [selectedUnitDetailsMemberId, setSelectedUnitDetailsMemberId] = useState(null);
   const [selectedTacticsMemberId, setSelectedTacticsMemberId] = useState(null);
   const [battlePlayback, setBattlePlayback] = useState(null);
   const [lastReplay, setLastReplay] = useState(null);
   const [showLordDetails, setShowLordDetails] = useState(false);
+  const [deploymentNotice, setDeploymentNotice] = useState('');
   const paths = createPaths(run.difficulty, run.seed);
   const lord = getRunLord(run);
+  const selectedUnitDetailsMember = run.army.find((member) => member.instanceId === selectedUnitDetailsMemberId) ?? null;
   const recruitableUnits = getRecruitableUnits(run);
   const unitUnlockProgress = getUnitUnlockProgress(run);
-  const hasBattleReadyUnit = run.army.some((member) => member.hp !== 0);
-  const hasDeployedArmy = hasBattleReadyUnit && run.army.every((member) => member.hp === 0 || member.position);
-  const leadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
+  const battleReadyMembers = run.army.filter((member) => member.hp !== 0);
+  const deployedMembers = battleReadyMembers.filter((member) => member.position);
+  const reserveMembers = battleReadyMembers.filter((member) => !member.position);
+  const hasBattleReadyUnit = battleReadyMembers.length > 0;
   const leadershipLimit = run.economicLimit + (lord.attributes?.leadership ?? 0);
+  const deployedLeadershipUsed = deployedMembers.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
+  const ownedLeadershipUsed = run.army.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
+  const hasDeployedArmy = deployedMembers.length > 0 && deployedLeadershipUsed <= leadershipLimit;
   const playbackEvent = battlePlayback?.battle.events[Math.max(0, battlePlayback.index - 1)] ?? null;
   const playbackState = battlePlayback ? getPlaybackState(battlePlayback) : null;
   const selectedTacticsMember = run.army.find((member) => member.instanceId === selectedTacticsMemberId) ?? null;
@@ -582,6 +667,11 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(runStorageKey, JSON.stringify(run));
   }, [run]);
+
+  useEffect(() => {
+    setGrid(gridFromRun({ army: run.army }));
+    setSelectedMemberId((current) => run.army.some((member) => member.hp !== 0 && member.instanceId === current) ? current : null);
+  }, [run.army]);
 
   const placedAt = (row, column) => grid.placements.find((placement) => (
     row >= placement.position.row
@@ -591,25 +681,47 @@ function App() {
   ));
 
   const selectCell = (row, column) => {
-    const member = run.army.find((item) => item.instanceId === selectedMemberId);
+    const member = battleReadyMembers.find((item) => item.instanceId === selectedMemberId);
     if (!member) return;
     const unit = { ...getEmpireUnit(member.unitId), id: member.instanceId };
-    setGrid((currentGrid) => moveUnit(currentGrid, unit, { row, column }));
+    const leadershipRequired = member.position ? deployedLeadershipUsed : deployedLeadershipUsed + unit.combat.leadershipCost;
+    if (leadershipRequired > leadershipLimit) {
+      setDeploymentNotice(`Для ${unit.name} бракує ${leadershipRequired - leadershipLimit} лідерства. Виведіть когось із поля або підвищте лідерство.`);
+      return;
+    }
+    const nextGrid = moveUnit(grid, unit, { row, column });
+    const placement = nextGrid.placements.find((item) => item.unit.id === unit.id);
+    if (!placement || placement.position.row !== row || placement.position.column !== column) {
+      setDeploymentNotice('Ця позиція зайнята або не підходить для розміру юніта.');
+      return;
+    }
+    setDeploymentNotice('');
+    setGrid(nextGrid);
     setRun((current) => updateArmyMember(current, member.instanceId, { position: { row, column } }));
   };
 
-  const resolveRunBattle = () => {
-    if (!run.selectedPath || !hasDeployedArmy) return;
-    const battleLord = getBattleLordStats(lord);
-    const alliesInBattle = run.army.map((member) => {
+  const removeFromBattlefield = (instanceId) => {
+    setDeploymentNotice('');
+    setRun((current) => updateArmyMember(current, instanceId, { position: null }));
+    if (selectedMemberId === instanceId) setSelectedMemberId(null);
+  };
+
+  const resolveRunBattle = (battleRun = run) => {
+    const battleLordProfile = getRunLord(battleRun);
+    const fieldedMembers = battleRun.army.filter((member) => member.hp !== 0 && member.position);
+    const fieldedLeadership = fieldedMembers.reduce((total, member) => total + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
+    const fieldedLeadershipLimit = battleRun.economicLimit + (battleLordProfile.attributes?.leadership ?? 0);
+    if (!battleRun.selectedPath || fieldedMembers.length === 0 || fieldedLeadership > fieldedLeadershipLimit) return;
+    const battleLord = getBattleLordStats(battleLordProfile);
+    const alliesInBattle = fieldedMembers.map((member) => {
       const unit = { ...createUnitInstance(getEmpireUnit(member.unitId), battleLord), id: member.instanceId, unitId: member.unitId, lord: battleLord, position: member.position, tactics: member.tactics };
       unit.hp = member.hp ?? unit.maxHp;
       return unit;
     });
-    const enemyArmy = generateEnemyArmy({ pathId: run.selectedPath.id, difficulty: run.difficulty, seed: formationSeed(run, run.selectedPath) });
+    const enemyArmy = generateEnemyArmy({ pathId: battleRun.selectedPath.id, difficulty: battleRun.difficulty, seed: formationSeed(battleRun, battleRun.selectedPath) });
     const enemyLord = { vitality: 0, battlePower: 0, crystalVolume: enemyArmy.crystal.manaMax, crystalRegenSpeed: enemyArmy.crystal.manaRegen };
     const enemiesInBattle = enemyArmy.units.map((member) => ({ ...createUnitInstance(getEmpireUnit(member.unitId), enemyLord), id: member.id, unitId: member.unitId, position: member.position, lord: enemyLord }));
-    const battle = simulateBattle({ allies: alliesInBattle, enemies: enemiesInBattle, lord, enemyCrystal: enemyArmy.crystal, seed: run.seed + run.difficulty });
+    const battle = simulateBattle({ allies: alliesInBattle, enemies: enemiesInBattle, lord: battleLordProfile, enemyCrystal: enemyArmy.crystal, seed: battleRun.seed + battleRun.difficulty });
     const victory = battle.winner === 'ally';
     const battleExperienceReward = battle.enemies
       .filter((unit) => unit.hp === 0)
@@ -620,7 +732,7 @@ function App() {
       victory,
       rounds: battle.round,
       events: battle.events,
-      path: run.selectedPath,
+      path: battleRun.selectedPath,
       survivors: battle.allies.map((unit) => ({ id: unit.id, hp: Math.round(unit.hp), maxHp: Math.round(unit.maxHp) })),
       allies: battle.allies,
       enemies: battle.enemies,
@@ -630,14 +742,25 @@ function App() {
       battleExperienceReward,
       unitExperienceReward,
       survivingUnitCount,
-      lordExperienceReward: battleExperienceReward + (victory ? (run.selectedPath.lordExperienceReward ?? 0) : 0)
+      unitExperienceBefore: Object.fromEntries(fieldedMembers.map((member) => [member.instanceId, member.exp ?? 0])),
+      lordLevelBefore: battleLordProfile.level ?? 1,
+      lordExperienceBefore: battleLordProfile.experience ?? 0,
+      lordExperienceReward: battleExperienceReward + (victory ? (battleRun.selectedPath.lordExperienceReward ?? 0) : 0)
     };
     const hpByInstance = new Map(battle.allies.map((unit) => [unit.id, unit.hp]));
-    const updatedArmy = run.army.map((member) => ({
-      ...member,
-      hp: hpByInstance.get(member.instanceId) ?? 0
-    }));
+    const updatedArmy = battleRun.army.map((member) => {
+      if (!hpByInstance.has(member.instanceId)) return member;
+      const hp = hpByInstance.get(member.instanceId);
+      return { ...member, hp, position: hp > 0 ? member.position : null };
+    });
     setBattlePlayback({ battle, report, victory, updatedArmy, initialAllies: alliesInBattle, initialEnemies: enemiesInBattle, index: 0, speed: 1, isPaused: false, isReplay: false });
+  };
+
+  const startBattle = (path) => {
+    const battleRun = choosePath(run, path);
+    if (battleRun === run) return;
+    setRun(battleRun);
+    resolveRunBattle(battleRun);
   };
 
   useEffect(() => {
@@ -646,7 +769,7 @@ function App() {
       if (!battlePlayback.isReplay) {
         setLastBattle(battlePlayback.report);
         setLastReplay({ battle: battlePlayback.battle, initialAllies: battlePlayback.initialAllies, initialEnemies: battlePlayback.initialEnemies, report: battlePlayback.report });
-        setRun((current) => finishBattle(current, { victory: battlePlayback.victory, army: battlePlayback.updatedArmy, battleExperienceReward: battlePlayback.report.battleExperienceReward }));
+        setRun((current) => finishBattle(current, { victory: battlePlayback.victory, army: battlePlayback.updatedArmy, battleExperienceReward: battlePlayback.report.battleExperienceReward, participatedInstanceIds: battlePlayback.initialAllies.map((unit) => unit.id) }));
         setHubView('results');
       }
       setBattlePlayback(null);
@@ -733,11 +856,12 @@ function App() {
           <span><small>Життя</small><b>{run.lives}</b></span>
           <span><small>Золото</small><b>{run.gold}</b></span>
           <span><small>Рудники</small><b>{run.mines} <i>+{run.mines}/перемога</i></b></span>
-          <span><small>Лідерство</small><b>{leadershipUsed}/{leadershipLimit}</b></span>
+          <span><small>Лідерство в полі</small><b>{deployedLeadershipUsed}/{leadershipLimit}</b></span>
           <span><small>Складність</small><b>{run.difficulty}</b></span>
         </div>
         {run.phase === 'hub' && <>
           {hubView === 'hub' && <>
+          {selectedUnitDetailsMember && <UnitDetails unit={getEmpireUnit(selectedUnitDetailsMember.unitId)} lord={lord} member={selectedUnitDetailsMember} onClose={() => setSelectedUnitDetailsMemberId(null)} />}
           <h3>1. Зберіть армію</h3>
           <p>Перегляньте ключові характеристики перед наймом. «Деталі» покаже повний розрахунок кожного значення для вашого лорда. За кожні 3 перемоги на Небезпечному перевалі відкривається один новий базовий юніт.</p>
           {unitUnlockProgress.remainingUnitIds.length > 0 && <small>До наступного відкриття: {unitUnlockProgress.victoriesUntilNextUnlock} {unitUnlockProgress.victoriesUntilNextUnlock === 1 ? 'перемога' : 'перемоги'} на Небезпечному перевалі · ще доступно {unitUnlockProgress.remainingUnitIds.length}.</small>}
@@ -749,8 +873,8 @@ function App() {
               const instance = createUnitInstance(unit, battleLord);
               const mainAction = unit.combat.actions.find((action) => action.effectKind === 'damage') ?? unit.combat.actions[0];
               const mainActionValue = getActionValue(mainAction, battleLord);
-              const canRecruit = run.gold >= unit.combat.leadershipCost && leadershipUsed + unit.combat.leadershipCost <= leadershipLimit;
-              const unavailableReason = run.gold < unit.combat.leadershipCost ? 'Бракує золота' : 'Бракує лідерства';
+               const canRecruit = run.gold >= unit.combat.leadershipCost;
+               const unavailableReason = 'Бракує золота';
               return <article className="recruit-card" key={unit.id}>
                 <UnitPortrait unitId={unit.id} className="recruit-portrait" />
                 <div className="recruit-card-copy">
@@ -766,18 +890,26 @@ function App() {
               </article>;
             })}
           </div>
-          <p className="army-summary">Ваша армія: {run.army.length ? run.army.map((member) => getEmpireUnit(member.unitId).name).join(', ') : 'ще порожня — найміть хоча б одного юніта.'}</p>
+          <p className="army-summary">У запасі можна тримати будь-яку кількість юнітів: найм обмежений лише золотом. У бій беруть тих, кого ви виставили в межах лідерства. В армії {run.army.length} юн. · загальна вартість {ownedLeadershipUsed} лідерства.</p>
           <div className="army-actions">
             {run.army.map((member) => {
               const unit = getEmpireUnit(member.unitId);
               const maxHp = createUnitInstance(unit, getBattleLordStats(lord)).maxHp;
+              const evolutionRequirements = getEvolutionRequirements(unit);
+              const experienceCap = getUnitExperienceCap(unit);
+              const experienceMultiplier = getUnitExperienceMultiplier(unit);
+              const canEvolve = evolutionRequirements && member.exp >= evolutionRequirements.experience && run.gold >= evolutionRequirements.gold;
+              const evolutionUnavailableReason = !evolutionRequirements || member.exp < evolutionRequirements.experience
+                ? 'Недостатньо досвіду'
+                : 'Недостатньо золота';
               return <div className="member-actions" key={member.instanceId}>
                 <UnitPortrait unitId={unit.id} className="army-member-portrait" />
-                <div className="member-heading"><strong>{unit.name}</strong><span>HP {member.hp ?? maxHp}/{maxHp} · EXP {member.exp}</span></div>
+                <div className="member-heading"><strong>{unit.name}</strong><span>HP {member.hp ?? maxHp}/{maxHp} · {experienceCap ? `EXP ${member.exp}/${experienceCap} · надходження ×${experienceMultiplier}` : 'Максимальний тір'}</span></div>
+                <button className="open-unit-details" onClick={() => setSelectedUnitDetailsMemberId(member.instanceId)}>Деталі</button>
                 <button className="open-tactics" onClick={() => setSelectedTacticsMemberId(member.instanceId)}>Налаштувати тактику</button>
                 {member.hp === 0 && <button onClick={() => setRun((current) => reviveUnit(current, member.instanceId, maxHp))}>Воскресити (10)</button>}
                 {member.hp && member.hp < maxHp && <button onClick={() => setRun((current) => healUnit(current, member.instanceId, maxHp))}>Лікувати</button>}
-                {unit.combat.evolutions.map((targetId) => <button disabled={member.exp < (unit.combat.expToUpgrade ?? 100)} key={targetId} onClick={() => setRun((current) => evolveUnit(current, member.instanceId, targetId))}>Еволюція: {getEmpireUnit(targetId).name}</button>)}
+                {unit.combat.evolutions.map((targetId) => <button disabled={!canEvolve} title={!canEvolve ? evolutionUnavailableReason : undefined} key={targetId} onClick={() => setRun((current) => evolveUnit(current, member.instanceId, targetId))}>Еволюція: {getEmpireUnit(targetId).name} ({evolutionRequirements.experience} EXP · {evolutionRequirements.gold} золота)</button>)}
               </div>;
             })}
           </div>
@@ -785,12 +917,23 @@ function App() {
           <button className="battle-button" disabled={!hasBattleReadyUnit} onClick={() => setHubView('opponents')}>Готово — обрати противника</button>
           </>}
           {hubView === 'opponents' && <>
+          {selectedUnitDetailsMember && <UnitDetails unit={getEmpireUnit(selectedUnitDetailsMember.unitId)} lord={lord} member={selectedUnitDetailsMember} onClose={() => setSelectedUnitDetailsMemberId(null)} />}
           <section className="deployment compact-deployment">
             <h3>2. Розставте армію</h3>
-            <p>Виберіть юніта нижче, а потім клітинку. Позиція зберігається; лицар займає дві клітинки по вертикалі.</p>
-            <div className="roster">
-              {run.army.map((member) => <button className={selectedMemberId === member.instanceId ? 'selected' : ''} key={member.instanceId} onClick={() => setSelectedMemberId(member.instanceId)}>{getEmpireUnit(member.unitId).name}</button>)}
+            <p>Виставляйте лише тих, кого берете в бій. Позиція зберігається; лицар займає дві клітинки по вертикалі.</p>
+            <div className="deployment-summary" aria-live="polite"><b>У полі: {deployedMembers.length} · {deployedLeadershipUsed}/{leadershipLimit} лідерства</b><span>Резерв: {reserveMembers.length} · полеглих: {run.army.length - battleReadyMembers.length}</span></div>
+            <div className="deployment-roster" aria-label="Склад для розстановки">
+              {battleReadyMembers.map((member) => {
+                const unit = getEmpireUnit(member.unitId);
+                const isDeployed = Boolean(member.position);
+                return <div className={`deployment-member ${isDeployed ? 'deployed' : 'reserve'} ${selectedMemberId === member.instanceId ? 'selected' : ''}`} key={member.instanceId}>
+                  <button className="deployment-member-select" onClick={() => { setSelectedMemberId(member.instanceId); setDeploymentNotice(''); }}><UnitPortrait unitId={unit.id} /><span><b>{unit.name}</b><small>{isDeployed ? 'На полі' : 'У резерві'} · {unit.combat.leadershipCost} лідерства</small></span></button>
+                  {isDeployed && <button className="deployment-remove" onClick={() => removeFromBattlefield(member.instanceId)}>В резерв</button>}
+                  <button className="deployment-details" onClick={() => setSelectedUnitDetailsMemberId(member.instanceId)}>Деталі</button>
+                </div>;
+              })}
             </div>
+            {deploymentNotice && <p className="deployment-notice" role="status">{deploymentNotice}</p>}
             <div className="deployment-lanes" aria-hidden="true"><b>ФРОНТ — ПЕРШИЙ РЯД</b><span>ТИЛ ↓</span></div>
             <div className="grid" role="grid" aria-label="Сітка розміщення армії">
               {Array.from({ length: 3 }, (_, row) => Array.from({ length: 5 }, (_, column) => {
@@ -800,17 +943,16 @@ function App() {
             </div>
           </section>
           <h3>3. Оберіть маршрут і почніть бій</h3>
-          <p>{hasDeployedArmy ? 'Виберіть одного з трьох противників. Перед боєм можете змінити розстановку вище.' : 'Спершу розставте всіх живих юнітів на полі — після цього стане доступним вибір противника.'}</p>
+          <p>{hasDeployedArmy ? 'Виберіть одного з трьох противників. У бій підуть лише юніти, позначені «На полі». Перед боєм можете змінити розстановку вище.' : 'Виставте хоча б одного живого юніта, не перевищуючи ліміт лідерства.'}</p>
           <div className="roster">
             {paths.map((path) => {
               const enemyArmy = generateEnemyArmy({ pathId: path.id, difficulty: run.difficulty, seed: formationSeed(run, path) });
-              return <button className="enemy-choice" key={path.id} disabled={!hasDeployedArmy} title={!hasDeployedArmy ? 'Спершу розставте всіх живих юнітів' : undefined} onClick={() => setRun((current) => choosePath(current, path))}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {formatPathReward(path.reward)} · загроза {path.threat} →</em></button>;
+              return <button className="enemy-choice" key={path.id} disabled={!hasDeployedArmy} title={!hasDeployedArmy ? 'Виставте хоча б одного живого юніта в межах лідерства' : undefined} onClick={() => startBattle(path)}><b>{path.name}</b><span>{enemyArmy.label} · лідерство {enemyArmy.leadershipUsed}/{enemyArmy.leadershipBudget}</span><small>Кристал: {enemyArmy.crystal.manaMax} · реген +{enemyArmy.crystal.manaRegen / 5}/хід</small><small>{enemyArmy.units.map((unit) => unit.name).join(', ')}</small><em>Нагорода: {formatPathReward(path.reward)} · загроза {path.threat} →</em></button>;
             })}
           </div>
           <button className="reset-button" onClick={() => setHubView('hub')}>← Повернутися до Hub</button>
           </>}
         </>}
-        {run.phase === 'battle' && !battlePlayback && <section className="battle-ready"><h3>Противник обраний: {run.selectedPath.name}</h3><p>{hasDeployedArmy ? `Загроза ${run.selectedPath.threat}. Армія готова — натисніть, щоб розпочати автобій.` : 'Армія не розставлена, тому бій не можна розпочати.'}</p><button className="battle-button" disabled={!hasDeployedArmy} onClick={resolveRunBattle}>В бій</button></section>}
         {battlePlayback && <section className="battle-playback" aria-live="polite">
           <div className="battle-arena-hud">
             <div className="arena-team ally"><span>✦</span><b>Імперія</b><small>Віра</small><i><em style={{ width: `${Math.max(0, Math.min(100, playbackState.faith))}%` }} /></i><strong>{Math.round(playbackState.faith)}</strong></div>
@@ -846,6 +988,17 @@ function App() {
           <div className="survivors">
             {lastBattle.survivors.map((unit) => <span key={unit.id}>{getEmpireUnit(run.army.find((member) => member.instanceId === unit.id)?.unitId)?.name ?? unit.id}: {unit.hp}/{unit.maxHp} HP</span>)}
           </div>
+          <section className="battle-experience-breakdown" aria-label="Отриманий досвід">
+            <h4>Отриманий досвід</h4>
+            <p><b>{lord.name}</b>: рівень {lastBattle.lordLevelBefore} → {lord.level} · EXP {formatStat(lastBattle.lordExperienceBefore)} → {formatStat(lord.experience)}</p>
+            <ul>
+              {run.army.map((member) => {
+                const before = lastBattle.unitExperienceBefore?.[member.instanceId] ?? member.exp;
+                const gained = Number(member.exp) - Number(before);
+                return <li key={member.instanceId}><b>{getEmpireUnit(member.unitId)?.name ?? member.instanceId}</b>: EXP {formatStat(before)} → {formatStat(member.exp)} {gained > 0 ? `(+${formatStat(gained)})` : '(без нагороди)'}</li>;
+              })}
+            </ul>
+          </section>
           <details>
             <summary>Журнал бою — {lastBattle.events.length} подій</summary>
             <ol className="battle-log">

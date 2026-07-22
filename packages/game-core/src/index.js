@@ -3,7 +3,7 @@ import { getBattleLordStats, getEmpireLord, getLordSkillEffects } from './lords.
 
 export { empireUnits, getEmpireUnit } from './catalog.js';
 export { addLordExperience, createLordProgress, empireLords, experienceToNextLordLevel, getBattleLordStats, getEmpireLord, getLordSkillEffects, getLordStarterUnitIds, LORD_ATTRIBUTE_UPGRADES, LORD_SKILL_POINTS_PER_LEVEL, normalizeLordProgress } from './lords.js';
-export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, getRecruitableUnits, getRunLord, getUnitUnlockProgress, HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK, healUnit, recruitUnit, reviveUnit, spendLordAttributePoint, updateArmyMember } from './run.js';
+export { choosePath, createDefaultTactics, createPaths, createRun, evolveUnit, finishBattle, generateEnemyArmy, getEvolutionRequirements, getRecruitableUnits, getRunLord, getUnitExperienceCap, getUnitExperienceMultiplier, getUnitUnlockProgress, HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK, healUnit, recruitUnit, reviveUnit, spendLordAttributePoint, updateArmyMember } from './run.js';
 export { applyActionEffect, applyBattleAuras, beginTurn, calculateDamage, evaluateFormula, expandAreaTargets, findGuardian, getAccessibleTargets, isActionUsable, regenerateCrystal, resolveAction, selectAutomaticAction, selectTargets, spendActionResources, spendCrystalResources } from './actions.js';
 
 export function createUnitInstance(definition, lord) {
@@ -22,7 +22,10 @@ export function createUnitInstance(definition, lord) {
     positionModifiers: definition.positionModifiers ?? [],
     resistances: definition.combat.resistances ?? {},
     role: definition.role,
-    experienceRewardOnKill: definition.combat.expRewardOnKill ?? 0,
+    // Tier-one definitions predate per-unit experience rewards.  Use the same
+    // progression curve as the authored tiers (20 EXP per leadership point)
+    // so the opening battles can advance both the army and its lord.
+    experienceRewardOnKill: definition.combat.expRewardOnKill ?? definition.combat.leadershipCost * 20,
     raceType: 'human',
     effects: [],
     cooldowns: {}

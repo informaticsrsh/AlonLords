@@ -16,6 +16,34 @@ const rewardDefinitions = [
 
 export const HARD_BATTLE_VICTORIES_PER_UNIT_UNLOCK = 3;
 
+// Difficulty now advances by half a point per battle. Keep the defeat rollback
+// expressed in battles as well: a loss still removes roughly five battles of progress.
+const DIFFICULTY_GAIN_PER_VICTORY = 0.5;
+const DIFFICULTY_LOSS_ON_DEFEAT = 2.5;
+
+const EVOLUTION_GOLD_COST_BY_TIER = Object.freeze({
+  1: 10,
+  2: 20,
+  3: 35
+});
+
+export function getEvolutionRequirements(unit) {
+  if (!unit?.combat?.evolutions?.length) return null;
+
+  return {
+    experience: unit.combat.expToUpgrade ?? 100,
+    gold: EVOLUTION_GOLD_COST_BY_TIER[unit.tier] ?? 0
+  };
+}
+
+export function getUnitExperienceCap(unit) {
+  return getEvolutionRequirements(unit)?.experience ?? 0;
+}
+
+export function getUnitExperienceMultiplier(unit) {
+  return 1 / 2 ** Math.max(0, (unit?.tier ?? 1) - 1);
+}
+
 function createEnemyRng(seed) {
   let state = Number(seed) >>> 0;
   return () => {
@@ -26,7 +54,9 @@ function createEnemyRng(seed) {
 
 function getEnemyLeadershipBudget(pathId, difficulty) {
   const profile = enemyProfiles[pathId] ?? enemyProfiles.safe;
-  return profile.leadership + (difficulty - 1) * profile.growth;
+  // Army compositions require an integer leadership budget. Difficulty itself
+  // may use half-steps, so round the resulting capacity down.
+  return Math.floor(profile.leadership + (difficulty - 1) * profile.growth);
 }
 
 function pathRewardSeed(seed, difficulty, pathId) {
@@ -286,17 +316,15 @@ export function spendLordAttributePoint(run, attribute) {
   };
 }
 
-function leadershipLimit(run) {
-  return run.economicLimit + normalizeLordProgress(run.lordProgress).attributes.leadership * LORD_ATTRIBUTE_UPGRADES.leadership.amount;
-}
-
 export function recruitUnit(run, unitId) {
   if (run.phase !== 'hub') return run;
   const unit = getEmpireUnit(unitId);
   if (!unit?.combat || !getUnlockedUnitIds(run).includes(unitId)) return run;
   const cost = unit.combat.leadershipCost;
-  const leadershipUsed = run.army.reduce((sum, member) => sum + getEmpireUnit(member.unitId).combat.leadershipCost, 0);
-  if (run.gold < cost || leadershipUsed + cost > leadershipLimit(run)) return run;
+  // Leadership determines the force that can be fielded, rather than the
+  // number of units a lord may keep in reserve. Recruitment is limited by
+  // gold only; deployment applies the leadership budget before a battle.
+  if (run.gold < cost) return run;
 
   const member = {
     instanceId: `${unitId}-${run.nextUnitNumber}`,
@@ -338,8 +366,9 @@ export function evolveUnit(run, instanceId, targetUnitId) {
   const member = run.army.find((item) => item.instanceId === instanceId);
   const source = member && getEmpireUnit(member.unitId);
   const target = getEmpireUnit(targetUnitId);
-  if (!member || !source?.combat?.evolutions.includes(targetUnitId) || !target?.combat || member.exp < (source.combat.expToUpgrade ?? 100)) return run;
-  return updateArmyMember(run, instanceId, { unitId: targetUnitId, hp: null, exp: 0, position: null });
+  const requirements = getEvolutionRequirements(source);
+  if (!member || !source?.combat?.evolutions.includes(targetUnitId) || !target?.combat || !requirements || member.exp < requirements.experience || run.gold < requirements.gold) return run;
+  return { ...updateArmyMember(run, instanceId, { unitId: targetUnitId, hp: null, exp: 0, position: null }), gold: run.gold - requirements.gold };
 }
 
 export function choosePath(run, path) {
@@ -347,17 +376,30 @@ export function choosePath(run, path) {
   return { ...run, phase: 'battle', selectedPath: path, lastUnlockedUnitId: null };
 }
 
-export function finishBattle(run, { victory, army = run.army, battleExperienceReward = 0 }) {
-  const nextDifficulty = victory ? run.difficulty + 1 : Math.max(1, run.difficulty - 5);
+export function finishBattle(run, { victory, army = run.army, battleExperienceReward = 0, participatedInstanceIds = army.map((member) => member.instanceId) }) {
+  const nextDifficulty = victory
+    ? run.difficulty + DIFFICULTY_GAIN_PER_VICTORY
+    : Math.max(1, run.difficulty - DIFFICULTY_LOSS_ON_DEFEAT);
   const lives = victory ? run.lives : run.lives - 1;
   const rewards = victory ? run.selectedPath ?? {} : {};
   const earnedBattleExperience = Math.max(0, Number(battleExperienceReward) || 0);
-  const survivors = army.filter((member) => member.hp === null || member.hp === undefined || Number(member.hp) > 0);
+  const participants = new Set(participatedInstanceIds);
+  const survivors = army.filter((member) => participants.has(member.instanceId) && (member.hp === null || member.hp === undefined || Number(member.hp) > 0));
   const experiencePerSurvivor = survivors.length > 0 ? earnedBattleExperience / survivors.length : 0;
-  const experiencedArmy = army.map((member) => ({
-    ...member,
-    exp: Math.max(0, Number(member.exp) || 0) + (member.hp === null || member.hp === undefined || Number(member.hp) > 0 ? experiencePerSurvivor : 0)
-  }));
+  const experiencedArmy = army.map((member) => {
+    // Reserve units neither fight nor receive battle experience.
+    if (!participants.has(member.instanceId)) return member;
+    const unit = getEmpireUnit(member.unitId);
+    const experienceCap = getUnitExperienceCap(unit);
+    const currentExperience = Math.min(experienceCap, Math.max(0, Number(member.exp) || 0));
+    const isSurvivor = member.hp === null || member.hp === undefined || Number(member.hp) > 0;
+    const gainedExperience = isSurvivor ? experiencePerSurvivor * getUnitExperienceMultiplier(unit) : 0;
+
+    return {
+      ...member,
+      exp: Math.min(experienceCap, currentExperience + gainedExperience)
+    };
+  });
   const lordExperienceReward = earnedBattleExperience + (rewards.lordExperienceReward ?? 0);
   const experiencedLordProgress = addLordExperience(run.lordProgress, lordExperienceReward);
   const lordProgress = victory
